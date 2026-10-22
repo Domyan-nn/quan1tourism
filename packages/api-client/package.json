@@ -1,0 +1,7 @@
+{
+  "name": "@quan1/api-client",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "exports": "./src/index.ts"
+}

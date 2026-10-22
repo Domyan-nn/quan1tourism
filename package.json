@@ -1,0 +1,36 @@
+{
+  "name": "quan1-stories",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "start:local": "node scripts/dev.mjs",
+    "dev": "npm run dev --workspace @quan1/admin",
+    "dev:web": "npm run dev --workspace @quan1/web",
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "tsc --noEmit -p apps/admin && tsc --noEmit -p apps/web",
+    "test:e2e": "playwright test"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.11.0",
+    "@playwright/test": "^1.58.2",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^5.1.4",
+    "prettier": "^3.6.2",
+    "typescript": "~5.9.3",
+    "vite": "^7.3.1"
+  },
+  "dependencies": {
+    "@fontsource/be-vietnam-pro": "^5.2.0",
+    "lucide-react": "^0.577.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  }
+}

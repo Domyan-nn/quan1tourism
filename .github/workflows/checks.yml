@@ -1,0 +1,38 @@
+name: Local application checks
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  checks:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.12'
+      - run: npm ci
+      - run: uv sync --frozen
+        working-directory: services/backend
+      - run: uv run ruff check app tests
+        working-directory: services/backend
+      - run: uv run pytest -q
+        working-directory: services/backend
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-test-report
+          path: |
+            playwright-report/
+            test-results/
+            .runtime/screenshots/
+          retention-days: 7
