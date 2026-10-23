@@ -73,8 +73,9 @@ class Poi(Base):
     name: Mapped[str] = mapped_column(String(180))
     address: Mapped[str] = mapped_column(String(300), default="")
     category_id: Mapped[str] = mapped_column(ForeignKey("categories.id"), index=True)
-    latitude: Mapped[float] = mapped_column(Float, default=10.7769)
-    longitude: Mapped[float] = mapped_column(Float, default=106.7009)
+    latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    source: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="draft", index=True)
     revision: Mapped[int] = mapped_column(Integer, default=1)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
@@ -94,6 +95,10 @@ class Poi(Base):
         ),
         CheckConstraint(
             "latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180", name="valid_coordinates"
+        ),
+        CheckConstraint(
+            "(latitude IS NULL AND longitude IS NULL) OR (latitude IS NOT NULL AND longitude IS NOT NULL)",
+            name="coordinate_pair",
         ),
     )
 

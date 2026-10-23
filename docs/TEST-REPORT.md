@@ -1,5 +1,28 @@
 # Báo cáo kiểm thử thực tế
 
+## Cập nhật 23/10/2026: PostgreSQL và AI local nhập Wikipedia
+
+| Kiểm tra | Kết quả |
+| --- | --- |
+| Khởi tạo PostgreSQL 18 | Database `quan1tourism`, đủ 9 bảng ứng dụng và `alembic_version`, migration `0004` |
+| Chuyển SQLite sang PostgreSQL | 3 tài khoản, 3 phiên, 4 danh mục, 12 POI, 24 bản dịch, 15 ngôn ngữ, 12 audit; đã sao lưu SQLite |
+| Chạy lại script khởi tạo | Thành công; không ghi đè hoặc nhân đôi dữ liệu hiện có |
+| AI với URL Wikipedia thực tế | Ollama `qwen3:4b`; lần cuối 56,8 giây; có tên, địa chỉ, danh mục, Việt/Anh, tọa độ Wikidata và ảnh Commons có ghi công |
+| Lưu POI mẫu vào PostgreSQL qua API | HTTP 201; Nhà Văn hóa Thanh niên ở trạng thái `draft`; đọc lại thành công; chưa xuất bản |
+| Dữ liệu sau thêm mẫu | 13 POI, 26 bản thuyết minh, 0 release công khai |
+| Backend `pytest -q` | **51 passed**, 31,08 giây; 1 cảnh báo Starlette/httpx |
+| Ruff `app tests` và script khởi tạo | Thành công |
+| Typecheck và build admin/web | Thành công |
+| `npm run test:e2e` | **22 passed**, 1,1 phút, exit code 0; desktop và Pixel 7 mô phỏng |
+| Ứng dụng đang chạy local | Admin 5173, web 5174, API ready 8000 đều HTTP 200 |
+| Mở POI PostgreSQL trên giao diện thật | Đúng tên/địa chỉ/tọa độ; ảnh nguồn tải được và ghi công hiển thị; đăng xuất sau kiểm tra |
+
+Backend kiểm tra quyền nhân viên/du khách trước khi truy cập nguồn, URL Wikipedia hợp lệ, chặn URL/redirect ngoài Wikimedia, ngôn ngữ bắt buộc và tùy chọn, kiểm tra JSON AI, không lưu khi AI lỗi hoặc trả thiếu, tọa độ thiếu giữ NULL, chuẩn hóa địa chỉ theo nguồn, phát hiện tên phường không thống nhất, ngăn tạo lại cùng bài viết và giữ nguồn qua snapshot xuất bản.
+
+Các ca trình duyệt mới mô phỏng phản hồi AI để kiểm tra điền biểu mẫu, cảnh báo thông tin thiếu, tọa độ không bị thay bằng số mặc định, lưu và mở lại nguồn. Luồng Wikipedia/Ollama thật được kiểm tra riêng trên PostgreSQL; đã rà soát bản mẫu để bỏ tên phường mâu thuẫn trong bài giới thiệu. Các bài kiểm thử tự động dùng DB tạm riêng. Chạy Playwright ngoài sandbox Windows để hoàn tất việc dừng máy chủ thử nghiệm; không thay đổi cấu hình test để dùng database thật.
+
+Ảnh và tọa độ có nguồn Wikimedia, không được model tự đoán. AI vẫn có thể suy diễn sai nên nội dung mới đi qua bản nháp và quy trình duyệt. Chưa kiểm thử PostGIS trên máy này. Ảnh chụp luồng nhập ở `.runtime/screenshots/wikipedia-import-desktop.png` và `wikipedia-import-mobile.png`; kết quả kiểm tra thực tế ở `.runtime/postgresql-ai-results.json`.
+
 ## Cập nhật 23/10/2026: đa ngôn ngữ và thuyết minh văn bản
 
 | Kiểm tra | Kết quả |

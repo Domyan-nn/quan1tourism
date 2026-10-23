@@ -27,14 +27,16 @@ export function Cover({
   poi,
   large = false,
 }: {
-  poi: Pick<Poi, "cover" | "image_id" | "name">;
+  poi: Pick<Poi, "cover" | "image_id" | "name" | "source">;
   large?: boolean;
 }) {
-  if (poi.image_id)
+  if (poi.image_id || poi.source?.image_url)
     return (
       <img
         className={`place-cover ${large ? "large" : ""}`}
-        src={mediaUrl(poi.image_id)}
+        src={
+          poi.image_id ? mediaUrl(poi.image_id) : (poi.source?.image_url ?? "")
+        }
         alt={poi.name}
       />
     );

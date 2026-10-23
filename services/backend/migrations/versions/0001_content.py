@@ -97,7 +97,9 @@ def upgrade():
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
     )
     op.create_index("ix_audit_logs_poi_id", "audit_logs", ["poi_id"])
-    if op.get_bind().dialect.name == "postgresql":
+    if op.get_bind().dialect.name == "postgresql" and op.get_bind().scalar(
+        sa.text("SELECT EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'postgis')")
+    ):
         op.execute("CREATE EXTENSION IF NOT EXISTS postgis")
         op.execute(
             "ALTER TABLE pois ADD COLUMN location geography(Point,4326) GENERATED ALWAYS AS (ST_SetSRID(ST_MakePoint(longitude,latitude),4326)::geography) STORED"

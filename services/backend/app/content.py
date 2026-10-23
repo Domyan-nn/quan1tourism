@@ -30,6 +30,7 @@ def serialize(poi: Poi, db: Session):
         "category_id": poi.category_id,
         "latitude": poi.latitude,
         "longitude": poi.longitude,
+        "source": poi.source,
         "status": poi.status,
         "revision": poi.revision,
         "updated_at": iso(poi.updated_at),

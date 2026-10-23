@@ -46,6 +46,22 @@ npm run dev:web
 
 Hoặc sau khi cài dependencies và chạy migration/seed, từ thư mục gốc chạy **`npm.cmd run start:local`** để mở cả ba máy chủ trong một terminal. Dừng bằng **Ctrl+C** hoặc phím **q**. Trên Linux/macOS dùng `npm run start:local`. Nếu PowerShell chặn `npm.ps1`, dùng `npm.cmd` cho các lệnh npm ở trên; không cần thay đổi chính sách thực thi của máy.
 
+## PostgreSQL và AI local
+
+Backend tự đọc cấu hình trong `.runtime/local.env` (đã gitignore); biến môi trường của shell được ưu tiên. Đặt `DATABASE_URL=postgresql+psycopg://postgres:<password>@127.0.0.1:5432/quan1tourism` trong tệp này, thay `<password>` và mã hóa URL nếu mật khẩu chứa ký tự đặc biệt. Không đưa mật khẩu vào Git hoặc tham số dòng lệnh.
+
+Từ thư mục gốc, chạy bằng Python của backend:
+
+```powershell
+services/backend/.venv/Scripts/python.exe scripts/setup_postgresql.py --database quan1tourism --import-sqlite
+```
+
+Script tạo database nếu chưa có, chạy toàn bộ migration, sao lưu SQLite rồi chuyển các tài khoản, phiên, danh mục, POI, bản dịch, media, release và lịch sử trong một transaction. Không ghi đè dữ liệu PostgreSQL đã có. PostGIS là tùy chọn; không cần cài extension để dùng quản trị nội dung. Khởi động lại backend sau khi đổi database.
+
+Để dùng AI, mở Ollama với model `qwen3:4b` đã cài (`ollama pull qwen3:4b` nếu chưa có). Trong **Thêm địa điểm → Tạo địa điểm từ Wikipedia**, dán URL rồi nhấn **Tạo thông tin bằng AI**. Các ngôn ngữ bắt buộc được chọn sẵn; có thể chọn thêm ngôn ngữ. Kết quả điền vào biểu mẫu để kiểm tra, sau đó nhấn **Lưu nháp**. Luồng duyệt/xuất bản vẫn áp dụng.
+
+Tên lấy từ Wikipedia; AI chọn danh mục và soạn thuyết minh; tọa độ lấy từ Wikipedia/Wikidata; ảnh và giấy phép lấy từ Wikimedia Commons. Thông tin thiếu được để trống, không dùng tọa độ giả. Nguồn, revision, model, cảnh báo và ghi công ảnh được lưu cùng POI và giữ trong snapshot đã xuất bản. Wikipedia cần Internet; bước AI chạy local, thường khoảng một phút cho Việt/Anh trên CPU của máy đã kiểm tra.
+
 ## Tài khoản demo local
 
 Chỉ được tạo khi chủ động chạy seed với `--demo`. Đây là thông tin đăng nhập công khai cho môi trường phát triển, **không dùng để triển khai thật**.
@@ -64,7 +80,7 @@ Trên trang du khách (`http://127.0.0.1:5174`), chọn **Đăng ký**, nhập h
 
 Tài khoản tự đăng ký luôn có vai trò `visitor`, chỉ xem nội dung đã xuất bản; không truy cập quản trị, bản nháp hay tệp riêng. Khách chưa đăng nhập vẫn xem và nghe nội dung công khai. Mật khẩu được băm Argon2, phiên lưu bằng cookie HttpOnly, không lưu mật khẩu/token trong localStorage. Chưa có xác minh email hoặc quên/đặt lại mật khẩu.
 
-Khi cập nhật từ bản cũ, dừng backend, sao lưu DB và chạy `uv run alembic upgrade head` trong `services/backend`, sau đó khởi động lại backend. Migration `0002` thêm vai trò du khách; `0003` chuyển bản dịch JSON sang bảng văn bản riêng và thêm danh sách ngôn ngữ. Tài khoản, phiên, văn bản, ảnh và lịch sử đã xuất bản được giữ lại. Xem [cấu trúc DB](docs/DATABASE.md).
+Khi cập nhật từ bản cũ, dừng backend, sao lưu DB và chạy `uv run alembic upgrade head` trong `services/backend`, sau đó khởi động lại backend. Migration `0002` thêm vai trò du khách; `0003` chuẩn hóa văn bản đa ngôn ngữ; `0004` thêm nguồn Wikipedia và cho phép tọa độ chưa biết. Tài khoản, phiên, văn bản, ảnh và lịch sử đã xuất bản được giữ lại. Xem [cấu trúc DB](docs/DATABASE.md).
 
 ## Admin sử dụng thế nào?
 
@@ -86,10 +102,10 @@ Trong **Ngôn ngữ & thuyết minh**, quản trị viên thêm/sửa mã ngôn 
 
 - Seed an toàn khi chạy lại: thêm bản ghi còn thiếu theo ID cố định, không ghi đè nội dung đã sửa.
 - 12 địa điểm mẫu, 4 danh mục; tất cả ở trạng thái **bản nháp**, có văn bản mẫu Việt/Anh, chưa có bản dịch cho 13 lựa chọn bổ sung. Đây không phải dữ liệu du lịch được kiểm chứng. Nguồn/quyền sử dụng: [docs/DATA-SOURCES.md](docs/DATA-SOURCES.md).
-- Bản dịch được biên tập thủ công, chưa có dịch tự động. TTS dùng Web Speech API, không cần khóa API. Giọng đọc phụ thuộc trình duyệt/hệ điều hành, có thể cần mạng hoặc cài thêm giọng. Khi không có giọng phù hợp, giao diện thông báo và vẫn hiển thị văn bản; không dùng giọng sai ngôn ngữ. Tham khảo [SpeechSynthesis.getVoices](https://developer.mozilla.org/en-US/docs/Web/API/SpeechSynthesis/getVoices).
+- Có thể biên tập thủ công hoặc tạo bản nháp đa ngôn ngữ từ Wikipedia bằng Ollama local. Nội dung AI cần kiểm tra trước khi xuất bản. TTS dùng Web Speech API, không cần khóa API. Giọng đọc phụ thuộc trình duyệt/hệ điều hành, có thể cần mạng hoặc cài thêm giọng. Khi không có giọng phù hợp, giao diện thông báo và vẫn hiển thị văn bản; không dùng giọng sai ngôn ngữ. Tham khảo [SpeechSynthesis.getVoices](https://developer.mozilla.org/en-US/docs/Web/API/SpeechSynthesis/getVoices).
 - Tệp nháp nằm sau endpoint có xác thực. Tệp đã từng phát hành được giữ để bảo toàn URL của các phiên bản đã phát hành; lưu trữ địa điểm không thu hồi các URL media đã công khai trước đó.
 - Lưu local mặc định ở `.runtime/` (đã gitignore). Không có khóa bí mật trong mã nguồn.
-- `.env.example` là tài liệu biến môi trường, ứng dụng không tự đọc `.env`. Thiết lập biến bằng `$env:DATABASE_URL = '...'`. Đường dẫn tương đối trong biến môi trường được tính theo thư mục chạy backend; mặc định không cần thiết lập biến nào.
+- `.env.example` là mẫu cấu hình; backend tự đọc `.runtime/local.env`, không tự đọc `.env`. Có thể ưu tiên biến shell bằng `$env:DATABASE_URL = '...'`. Đường dẫn tương đối trong biến môi trường được tính theo thư mục chạy backend.
 
 ## Kiểm tra lại
 
@@ -110,4 +126,4 @@ Xem [báo cáo kiểm thử](docs/TEST-REPORT.md), [kiến trúc/API](docs/ARCHI
 
 ## Giới hạn hiện tại
 
-Luồng nội dung Giai đoạn 1 có backend thật. Chưa triển khai tour, Expo/mobile, quét QR, GPS, PWA/offline, đồng bộ tiến độ, worker Celery/Redis, S3, thống kê nghe và quản trị tài khoản. PostgreSQL/PostGIS có cấu hình driver và migration nhánh riêng nhưng chưa được kiểm thử với máy chủ PostgreSQL trong phiên này. Không tuyên bố sẵn sàng production; chưa triển khai ra bên ngoài.
+Luồng nội dung Giai đoạn 1 có backend thật và đã khởi tạo PostgreSQL 18 local. Chưa triển khai tour, Expo/mobile, quét QR, GPS, PWA/offline, đồng bộ tiến độ, worker Celery/Redis, S3, thống kê nghe và quản trị tài khoản. PostGIS chỉ được thêm khi máy chủ có extension; nhánh PostGIS chưa kiểm thử trên máy này. AI có thể bỏ sót hoặc suy diễn sai nên chỉ tạo bản nháp để duyệt. Chưa triển khai ra bên ngoài.

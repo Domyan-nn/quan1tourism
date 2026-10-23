@@ -1,0 +1,15 @@
+.source-attribution {
+  margin: 16px 0;
+  padding-top: 10px;
+  border-top: 1px solid #dce5d2;
+  font-size: 0.82rem;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.source-attribution p {
+  margin: 4px 0;
+}
+.source-attribution a {
+  color: inherit;
+  text-decoration: underline;
+}

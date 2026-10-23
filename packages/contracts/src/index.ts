@@ -29,13 +29,41 @@ export interface Translation {
   text: string;
   tts_ready: boolean;
 }
+export interface WikipediaSource {
+  url: string;
+  title: string;
+  revision_id: number | null;
+  retrieved_at: string;
+  license: string;
+  model: string;
+  warnings: string[];
+  wikidata_id: string | null;
+  coordinate_source: string | null;
+  image_url: string | null;
+  image_page_url: string | null;
+  image_author: string | null;
+  image_license: string | null;
+}
+export interface WikipediaDraft {
+  draft: Pick<
+    Poi,
+    "name" | "address" | "category_id" | "latitude" | "longitude"
+  > & {
+    translations: Record<string, Pick<Translation, "title" | "text">>;
+    source: WikipediaSource;
+  };
+  missing_fields: string[];
+  elapsed_seconds: number;
+  existing_poi: { id: string; name: string } | null;
+}
 export interface Poi {
   id: string;
   name: string;
   address: string;
   category_id: string;
-  latitude: number;
-  longitude: number;
+  latitude: number | null;
+  longitude: number | null;
+  source?: WikipediaSource | null;
   status: Status;
   revision: number;
   updated_at: string;

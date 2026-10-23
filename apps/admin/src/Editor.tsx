@@ -20,7 +20,7 @@ import {
   ShieldCheck,
   Volume2,
 } from "lucide-react";
-import { api, SpeechPlayer } from "@quan1/api-client";
+import { api, SourceAttribution, SpeechPlayer } from "@quan1/api-client";
 import type {
   Audit,
   Category,
@@ -32,6 +32,7 @@ import type {
 } from "@quan1/contracts";
 import { Badge, Cover, Dialog, Loading } from "./components";
 import { messages, type UiLocale } from "./i18n";
+import { WikipediaImport } from "./WikipediaImport";
 
 type Props = {
   initial: Poi | "new";
@@ -49,6 +50,7 @@ const inputData = (p: Poi) => ({
   category_id: p.category_id,
   latitude: p.latitude,
   longitude: p.longitude,
+  source: p.source ?? null,
   translations: Object.fromEntries(
     Object.entries(p.translations).map(([l, tr]) => [
       l,
@@ -76,8 +78,9 @@ export function Editor({
           name: "",
           address: "",
           category_id: categories[0]?.id ?? "",
-          latitude: 10.7769,
-          longitude: 106.7009,
+          latitude: null,
+          longitude: null,
+          source: null,
           status: "draft",
           revision: 1,
           updated_at: new Date().toISOString(),
@@ -445,6 +448,57 @@ export function Editor({
             )}
             {step === 0 && (
               <fieldset disabled={busy || locked} className="editor-fields">
+                {!saved.id && (
+                  <WikipediaImport
+                    languages={languages}
+                    vi={vi}
+                    busy={busy}
+                    onBusy={setBusy}
+                    onApply={(result) => {
+                      setForm((current) => ({
+                        ...current,
+                        ...result.draft,
+                        translations: {
+                          ...current.translations,
+                          ...Object.fromEntries(
+                            Object.entries(result.draft.translations).map(
+                              ([code, tr]) => [
+                                code,
+                                { ...tr, tts_ready: true },
+                              ],
+                            ),
+                          ),
+                        },
+                      }));
+                      setFeedback(
+                        vi
+                          ? "AI đã điền thông tin. Hãy kiểm tra nguồn và bổ sung thông tin thiếu trước khi lưu nháp."
+                          : "AI filled in the details. Review the sources and missing information before saving.",
+                      );
+                    }}
+                  />
+                )}
+                {form.source && (
+                  <div className="wikipedia-review">
+                    <strong>
+                      {vi
+                        ? "Nội dung AI · Cần kiểm tra trước khi xuất bản"
+                        : "AI draft · Review before publishing"}
+                    </strong>
+                    {form.source.warnings.length > 0 && (
+                      <ul>
+                        {form.source.warnings.map((warning, index) => (
+                          <li key={index}>{warning}</li>
+                        ))}
+                      </ul>
+                    )}
+                    <SourceAttribution
+                      source={form.source}
+                      vi={vi}
+                      imageUsed={!form.image_id}
+                    />
+                  </div>
+                )}
                 <label className="field-label">
                   {vi ? "Tên địa điểm" : "Place name"}{" "}
                   <span className="required">*</span>
@@ -542,9 +596,14 @@ export function Editor({
                         min={-90}
                         max={90}
                         step="any"
-                        value={form.latitude}
+                        value={form.latitude ?? ""}
                         onChange={(e) =>
-                          update("latitude", Number(e.target.value))
+                          update(
+                            "latitude",
+                            e.target.value === ""
+                              ? null
+                              : Number(e.target.value),
+                          )
                         }
                       />
                     </label>
@@ -556,9 +615,14 @@ export function Editor({
                         min={-180}
                         max={180}
                         step="any"
-                        value={form.longitude}
+                        value={form.longitude ?? ""}
                         onChange={(e) =>
-                          update("longitude", Number(e.target.value))
+                          update(
+                            "longitude",
+                            e.target.value === ""
+                              ? null
+                              : Number(e.target.value),
+                          )
                         }
                       />
                     </label>

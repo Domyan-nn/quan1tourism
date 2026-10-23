@@ -9,7 +9,12 @@ import {
   Search,
   Volume2,
 } from "lucide-react";
-import { api, mediaUrl, SpeechPlayer } from "@quan1/api-client";
+import {
+  api,
+  mediaUrl,
+  SourceAttribution,
+  SpeechPlayer,
+} from "@quan1/api-client";
 import type { Language, Locale, Poi } from "@quan1/contracts";
 import { AuthControls } from "./Auth";
 import "@fontsource/be-vietnam-pro/400.css";
@@ -172,8 +177,15 @@ function Visitor() {
               {vi ? "Tất cả địa điểm" : "All places"}
             </button>
             <div className="story-cover">
-              {selected.image_id ? (
-                <img src={mediaUrl(selected.image_id)} alt={narration?.title} />
+              {selected.image_id || selected.source?.image_url ? (
+                <img
+                  src={
+                    selected.image_id
+                      ? mediaUrl(selected.image_id)
+                      : (selected.source?.image_url ?? "")
+                  }
+                  alt={narration?.title}
+                />
               ) : (
                 <div className="illustration">
                   <MapPin size={54} />
@@ -227,6 +239,11 @@ function Visitor() {
             <p className="narration" lang={locale} dir={language?.direction}>
               {narration?.text}
             </p>
+            <SourceAttribution
+              source={selected.source}
+              vi={vi}
+              imageUsed={!selected.image_id}
+            />
           </article>
         ) : (
           <>
@@ -300,8 +317,15 @@ function Visitor() {
                     }}
                   >
                     <div className="place-image">
-                      {p.image_id ? (
-                        <img src={mediaUrl(p.image_id)} alt="" />
+                      {p.image_id || p.source?.image_url ? (
+                        <img
+                          src={
+                            p.image_id
+                              ? mediaUrl(p.image_id)
+                              : (p.source?.image_url ?? "")
+                          }
+                          alt=""
+                        />
                       ) : (
                         <MapPin size={36} />
                       )}

@@ -258,3 +258,107 @@ test("editor publishes text and visitor listens in both languages with TTS", asy
   ).toBeVisible();
   await guestContext.close();
 });
+
+test("Wikipedia AI import fills a draft and persists its source", async ({
+  page,
+}, info) => {
+  const name = `Địa điểm Wikipedia ${info.project.name}`;
+  const sourceUrl = `https://vi.wikipedia.org/wiki/POI_${info.project.name}`;
+  await page.route("**/api/v1/admin/ai/status", (route) =>
+    route.fulfill({
+      json: { ready: true, model: "qwen3:4b", message: "Sẵn sàng" },
+    }),
+  );
+  await page.route("**/api/v1/admin/ai/wikipedia", async (route) => {
+    expect(route.request().postDataJSON()).toEqual({
+      url: sourceUrl,
+      language_codes: ["vi", "en"],
+    });
+    await route.fulfill({
+      json: {
+        draft: {
+          name,
+          address: "4 Phạm Ngọc Thạch",
+          category_id: "culture",
+          latitude: null,
+          longitude: null,
+          translations: {
+            vi: {
+              title: name,
+              text: "Bài giới thiệu tiếng Việt từ nguồn Wikipedia.",
+            },
+            en: {
+              title: "Wikipedia place",
+              text: "An English narration based on Wikipedia.",
+            },
+          },
+          source: {
+            url: sourceUrl,
+            title: name,
+            revision_id: 123,
+            retrieved_at: "2026-10-23T03:00:00Z",
+            license: "CC BY-SA",
+            model: "qwen3:4b",
+            warnings: ["Nguồn chưa có tọa độ. Hãy bổ sung vị trí chính xác."],
+            wikidata_id: null,
+            coordinate_source: null,
+            image_url: null,
+            image_page_url: null,
+            image_author: null,
+            image_license: null,
+          },
+        },
+        missing_fields: ["latitude", "longitude", "image"],
+        elapsed_seconds: 60,
+        existing_poi: null,
+      },
+    });
+  });
+  await login(page);
+  await page
+    .getByRole("button", { name: "Thêm địa điểm", exact: true })
+    .click();
+  await page.getByLabel("URL Wikipedia", { exact: true }).fill(sourceUrl);
+  await page
+    .getByRole("button", { name: "Tạo thông tin bằng AI", exact: true })
+    .click();
+  await expect(page.getByLabel("Tên địa điểm", { exact: false })).toHaveValue(
+    name,
+  );
+  await expect(page.getByLabel("Địa chỉ", { exact: true })).toHaveValue(
+    "4 Phạm Ngọc Thạch",
+  );
+  await expect(
+    page.getByText("Nguồn chưa có tọa độ. Hãy bổ sung vị trí chính xác.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await page.locator(".location-details > summary").click();
+  await expect(page.getByLabel("Vĩ độ", { exact: true })).toHaveValue("");
+  await expect(page.getByLabel("Kinh độ", { exact: true })).toHaveValue("");
+  await page.screenshot({
+    path: `.runtime/screenshots/wikipedia-import-${info.project.name}.png`,
+    fullPage: true,
+  });
+  const [response] = await Promise.all([
+    page.waitForResponse(
+      (response) =>
+        response.url().endsWith("/api/v1/admin/pois") &&
+        response.request().method() === "POST",
+      { timeout: 10000 },
+    ),
+    page.getByRole("button", { name: "Lưu bản nháp", exact: true }).click(),
+  ]);
+  expect(response.status()).toBe(201);
+  const poi = await response.json();
+  expect(poi.status).toBe("draft");
+  expect(poi.source.url).toBe(sourceUrl);
+  expect(poi.latitude).toBeNull();
+  expect(poi.translations.vi.text).toContain("Wikipedia");
+  expect(poi.translations.en.text).toContain("Wikipedia");
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name, exact: true }).click();
+  await expect(
+    page.getByRole("link", { name: `${name} · Wikipedia`, exact: true }),
+  ).toHaveAttribute("href", sourceUrl + "?oldid=123");
+});

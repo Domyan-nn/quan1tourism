@@ -20,7 +20,8 @@ from .content import audit, check_revision, get_poi, iso, serialize, text_snapsh
 from .languages import get_language, language_data, languages
 from .db import MEDIA_ROOT, get_db
 from .models import Audit, Category, Language, Media, Poi, Release, Session, User, now, uid
-from .schemas import ActionInput, CategoryInput, LanguageInput, Login, PoiInput, Register
+from .schemas import ActionInput, CategoryInput, LanguageInput, Login, PoiInput, Register, WikipediaImportInput
+from .wikipedia import generate_draft, ollama_status
 
 app = FastAPI(title="Saigon Stories API", version="0.1.0")
 editors = require("editor", "reviewer", "admin")
@@ -309,10 +310,37 @@ def apply_input(poi: Poi, data: PoiInput, db: DbSession):
         get_language(db, locale)
         translations[locale] = {"title": tr.title.strip(), "text": tr.text.strip()}
     poi.translations = translations
+    if "source" in data.model_fields_set:
+        poi.source = data.source.model_dump() if data.source else None
+
+
+@app.get("/api/v1/admin/ai/status")
+def ai_status(user: User = Depends(editors)):
+    return ollama_status()
+
+
+@app.post("/api/v1/admin/ai/wikipedia")
+def wikipedia_preview(
+    data: WikipediaImportInput, db: DbSession = Depends(get_db), user: User = Depends(editors)
+):
+    available = languages(db, enabled_only=True)
+    requested = set(data.language_codes) | {item.code for item in available if item.required}
+    if not requested or not requested.issubset({item.code for item in available}):
+        raise HTTPException(422, "Chọn các ngôn ngữ đang được bật để tạo nội dung.")
+    selected = [{"code": item.code, "name": item.native_name} for item in available if item.code in requested]
+    categories = [{"id": item.id, "name": item.name} for item in db.scalars(select(Category))]
+    if not categories:
+        raise HTTPException(409, "Hãy tạo ít nhất một danh mục trước khi nhập địa điểm.")
+    result = generate_draft(data.url, categories, selected)
+    existing = db.scalar(select(Poi).where(Poi.source["url"].as_string() == result["draft"]["source"]["url"]))
+    result["existing_poi"] = {"id": existing.id, "name": existing.name} if existing else None
+    return result
 
 
 @app.post("/api/v1/admin/pois", status_code=201)
 def create_poi(data: PoiInput, db: DbSession = Depends(get_db), user: User = Depends(editors)):
+    if data.source and db.scalar(select(Poi.id).where(Poi.source["url"].as_string() == data.source.url)):
+        raise HTTPException(409, "Bài Wikipedia này đã có địa điểm. Hãy tìm và mở địa điểm hiện có để chỉnh sửa.")
     poi = Poi(id=uid(), translations={})
     apply_input(poi, data, db)
     db.add(poi)

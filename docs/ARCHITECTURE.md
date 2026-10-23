@@ -38,7 +38,7 @@ Migration `0003` thay `pois.translations` JSON bằng `poi_translations`, khóa 
 
 `content_releases.snapshot` là bản chụp văn bản/metadata/media bất biến. `is_current` chỉ là con trỏ phát hành có thể thay đổi; snapshot không bị sửa. Khi biên tập bản đang phát hành, `pois` chuyển về draft nhưng bản phát hành vẫn tồn tại. Khi xuất bản lại, con trỏ được chuyển trong cùng transaction. Lưu trữ gỡ con trỏ; snapshot và media được giữ lại. Khôi phục sao chép vào draft mới với revision tăng.
 
-Role hiện là một cột có constraint trong users; chưa triển khai đa vai trò `roles/user_roles`. Khóa ngoại, unique email, unique danh mục, unique `(poi_id, revision)`, constraint trạng thái/tọa độ và index đã có. PostgreSQL có cột geography được sinh từ longitude/latitude và GIST index; SQLite local dùng hai số thực và không cung cấp nearby query.
+Role hiện là một cột có constraint trong users; chưa triển khai đa vai trò `roles/user_roles`. Khóa ngoại, unique email, unique danh mục, unique `(poi_id, revision)`, constraint trạng thái/tọa độ và index đã có. Khi máy chủ có PostGIS, migration thêm cột geography sinh từ longitude/latitude và GIST index; PostgreSQL không có PostGIS và SQLite dùng hai số thực hoặc cặp NULL, chưa cung cấp nearby query.
 
 ## API
 
@@ -68,7 +68,9 @@ Lỗi dạng `{ "detail": "thông báo" }`, header `X-Request-ID`, không echo i
 
 Ảnh: JPG/PNG/WebP, tối đa 10 MB/20 triệu pixel, Pillow kiểm tra nội dung và MIME. Endpoint từ chối upload audio. Media cũ giữ nguyên để bảo toàn dữ liệu/URL đã phát hành, nhưng API nội dung mới chỉ trả văn bản và `tts_ready`. `FileResponse` hỗ trợ Range, Content-Type và nosniff; không mount thư mục upload làm static công khai.
 
-Frontend không dùng `dangerouslySetInnerHTML`; bài thuyết minh là plain text được React escape. `SpeechPlayer` dùng chung cho admin và du khách gọi Web Speech API sau thao tác người dùng, chọn giọng cùng ngôn ngữ, chia văn bản dài thành đoạn tối đa 180 ký tự, bỏ sự kiện cũ sau khi dừng, dừng khi đổi địa điểm/ngôn ngữ hoặc đóng preview. Chỉ một player được đọc tại một thời điểm. Không có khóa API, worker hoặc tệp audio cho TTS. Giao diện thông báo trình duyệt/giọng không khả dụng và lỗi phát. Các giọng có thể do hệ điều hành hoặc dịch vụ của trình duyệt cung cấp; không cam kết offline. Chưa tích hợp dịch tự động.
+Frontend không dùng `dangerouslySetInnerHTML`; bài thuyết minh là plain text được React escape. `SpeechPlayer` dùng chung cho admin và du khách gọi Web Speech API sau thao tác người dùng, chọn giọng cùng ngôn ngữ, chia văn bản dài thành đoạn tối đa 180 ký tự, bỏ sự kiện cũ sau khi dừng, dừng khi đổi địa điểm/ngôn ngữ hoặc đóng preview. Chỉ một player được đọc tại một thời điểm. Không có khóa API, worker hoặc tệp audio cho TTS. Giọng có thể do hệ điều hành hoặc dịch vụ của trình duyệt cung cấp; không cam kết offline.
+
+`POST /api/v1/admin/ai/wikipedia` tải nội dung Wikimedia và gọi Ollama local bằng structured outputs. Schema phụ thuộc danh mục và ngôn ngữ thực trong DB. API trả dữ liệu để xem lại, không ghi POI. `POST /api/v1/admin/pois` lưu bản nháp sau khi người dùng kiểm tra; từ chối tạo lại cùng URL nguồn. Migration `0004` lưu provenance JSON và cho phép thiếu tọa độ. Model không được cung cấp quyền gọi công cụ hay ghi DB; tọa độ/ảnh được backend lấy trực tiếp từ nguồn, nguồn và ghi công theo POI tới snapshot đã xuất bản.
 
 ## Giai đoạn sau
 

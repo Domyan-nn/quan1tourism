@@ -3549,3 +3549,15 @@ th {
 .language-form fieldset { border: 0; padding: 0; min-width: 0; }
 .tts-preview-card { border: 1px solid #dce5d2; border-radius: 10px; padding: 16px; }
 .audio-count.ready { color: #506a35; }
+.wikipedia-import { padding: 20px; border: 1px solid #bdcfac; border-radius: 12px; background: #f5f8f0; }
+.wikipedia-import-heading { display: flex; align-items: center; gap: 9px; color: #405b2b; }
+.wikipedia-import h3 { margin: 0; font-size: 1.05rem; }
+.wikipedia-import > p { color: #536747; line-height: 1.6; }
+.wikipedia-languages { margin: 14px 0; }
+.wikipedia-languages summary { cursor: pointer; }
+.wikipedia-language-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin-top: 12px; }
+.wikipedia-language-options label { display: flex; align-items: center; gap: 8px; }
+.wikipedia-import-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.wikipedia-import-actions .field-hint { flex: 1 1 180px; }
+.wikipedia-review { padding: 16px; border: 1px solid #d5c28e; border-radius: 10px; background: #fffaf0; overflow-wrap: anywhere; }
+.wikipedia-review ul { padding-left: 20px; line-height: 1.6; }

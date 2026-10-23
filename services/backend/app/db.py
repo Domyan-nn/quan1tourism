@@ -4,8 +4,8 @@ from pathlib import Path
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
-ROOT = Path(__file__).resolve().parents[3]
-RUNTIME = ROOT / ".runtime"
+from .config import RUNTIME
+
 RUNTIME.mkdir(exist_ok=True)
 MEDIA_ROOT = Path(os.getenv("MEDIA_ROOT", str(RUNTIME / "media")))
 MEDIA_ROOT.mkdir(parents=True, exist_ok=True)

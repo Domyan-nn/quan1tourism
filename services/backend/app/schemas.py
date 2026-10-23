@@ -1,7 +1,47 @@
 import re
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+
+class WikipediaSource(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    url: str = Field(max_length=2000)
+    title: str = Field(max_length=300)
+    revision_id: int | None = None
+    retrieved_at: str = Field(max_length=50)
+    license: str = Field(default="CC BY-SA", max_length=100)
+    model: str = Field(max_length=100)
+    warnings: list[str] = Field(default_factory=list, max_length=30)
+    wikidata_id: str | None = Field(default=None, pattern=r"^Q\d+$")
+    coordinate_source: str | None = Field(default=None, max_length=2000)
+    image_url: str | None = Field(default=None, max_length=2000)
+    image_page_url: str | None = Field(default=None, max_length=2000)
+    image_author: str | None = Field(default=None, max_length=500)
+    image_license: str | None = Field(default=None, max_length=100)
+
+    @field_validator("url")
+    @classmethod
+    def valid_wikipedia(cls, value):
+        from .wikipedia import normalize_wikipedia_url
+
+        return normalize_wikipedia_url(value)[2]
+
+    @field_validator("image_url", "image_page_url", "coordinate_source")
+    @classmethod
+    def valid_source_link(cls, value):
+        from urllib.parse import urlsplit
+
+        from .wikipedia import allowed_wikimedia_url
+
+        if value:
+            parsed = urlsplit(value)
+            if not allowed_wikimedia_url(value):
+                raise ValueError("Invalid Wikimedia source URL")
+            if parsed.hostname not in {"upload.wikimedia.org", "commons.wikimedia.org", "www.wikidata.org"}:
+                if not value.startswith("https://") or "wikipedia.org/wiki/" not in value:
+                    raise ValueError("Invalid source URL")
+        return value
 
 
 class Login(BaseModel):
@@ -56,10 +96,23 @@ class PoiInput(BaseModel):
     name: str = Field(min_length=1, max_length=180)
     address: str = Field(default="", max_length=300)
     category_id: str
-    latitude: float = Field(default=10.7769, ge=-90, le=90)
-    longitude: float = Field(default=106.7009, ge=-180, le=180)
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+    source: WikipediaSource | None = None
     translations: dict[str, TranslationInput] = Field(default_factory=dict, max_length=100)
     revision: int = Field(default=1, ge=1)
+
+    @model_validator(mode="after")
+    def coordinate_pair(self):
+        if (self.latitude is None) != (self.longitude is None):
+            raise ValueError("Both coordinates are required together")
+        return self
+
+
+class WikipediaImportInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    url: str = Field(min_length=10, max_length=2000)
+    language_codes: list[str] = Field(default_factory=list, max_length=15)
 
 
 class ActionInput(BaseModel):
