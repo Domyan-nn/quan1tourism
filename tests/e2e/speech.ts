@@ -45,6 +45,10 @@ export async function mockSpeech(
           rate: utterance.rate,
           voice: utterance.voice?.voiceURI ?? "",
         });
+        queueMicrotask(() => {
+          if (active === utterance)
+            utterance.onstart?.(new Event("start") as SpeechSynthesisEvent);
+        });
       },
     });
     Object.defineProperty(window, "speechSynthesis", {

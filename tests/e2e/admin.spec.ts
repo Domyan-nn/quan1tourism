@@ -11,7 +11,7 @@ async function login(page: Page, role = "admin") {
     page.getByRole("heading", { name: "Địa điểm", exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Dinh Độc Lập", exact: true }),
+    page.locator(".place-name, .place-card h3 button").first(),
   ).toBeVisible();
 }
 test("admin accessibility on dashboard", async ({ page }) => {
@@ -87,7 +87,7 @@ test("search, empty state, filters and responsive navigation", async ({
     .getByRole("button", { name: "Bỏ bộ lọc", exact: true })
     .click();
   await expect(
-    page.getByRole("button", { name: "Dinh Độc Lập", exact: true }),
+    page.locator(".place-name, .place-card h3 button").first(),
   ).toBeVisible();
   if (info.project.name === "mobile")
     await page.getByRole("button", { name: "Mở menu", exact: true }).click();
@@ -142,11 +142,11 @@ test("keyboard accessible help and display preferences", async ({
   ).toBeVisible();
 });
 
-test("editor publishes text and visitor listens in both languages with TTS", async ({
+test("admin publishes text and visitor listens in both languages with TTS", async ({
   page,
   browser,
 }, info) => {
-  await login(page, "editor");
+  await login(page, "admin");
   await page
     .getByRole("button", { name: "Thêm địa điểm", exact: true })
     .click();
@@ -157,9 +157,7 @@ test("editor publishes text and visitor listens in both languages with TTS", asy
   await page
     .getByLabel("Địa chỉ", { exact: true })
     .fill("Quận 1, TP. Hồ Chí Minh");
-  await page
-    .getByRole("button", { name: "Lưu & tiếp tục", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Tiếp tục", exact: true }).click();
   await page.getByLabel("Tiêu đề thuyết minh", { exact: false }).fill(viTitle);
   await page
     .getByLabel("Bài thuyết minh", { exact: false })
@@ -169,49 +167,23 @@ test("editor publishes text and visitor listens in both languages with TTS", asy
   await page
     .getByLabel("Bài thuyết minh", { exact: false })
     .fill("User interface test content.");
-  await page
-    .getByRole("button", { name: "Lưu & tiếp tục", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Tiếp tục", exact: true }).click();
   await expect(page.locator(".tts-preview-card")).toHaveCount(2);
+  await page.getByRole("button", { name: "Tiếp tục", exact: true }).click();
   await page
-    .getByRole("button", { name: "Lưu & tiếp tục", exact: true })
+    .getByRole("button", { name: "Bước 1: Thông tin địa điểm", exact: true })
     .click();
+  await page
+    .getByLabel("Trạng thái hiển thị", { exact: true })
+    .selectOption("published");
+  await page.getByRole("button", { name: "Lưu thay đổi", exact: true }).click();
   await expect(
-    page.getByRole("button", { name: "Gửi duyệt", exact: true }),
-  ).toBeEnabled();
+    page.getByText("Đã lưu thay đổi.", { exact: true }),
+  ).toBeVisible();
   await page.screenshot({
     path: `.runtime/screenshots/editor-${info.project.name}.png`,
     fullPage: true,
   });
-  await page.getByRole("button", { name: "Gửi duyệt", exact: true }).click();
-  await expect(
-    page
-      .locator(".dialog-wide")
-      .getByRole("button", { name: "Duyệt nội dung", exact: true }),
-  ).toHaveCount(0);
-  await page.getByRole("button", { name: "Hoàn tất", exact: true }).click();
-  if (info.project.name === "mobile")
-    await page.getByRole("button", { name: "Mở menu", exact: true }).click();
-  await page.getByRole("button", { name: "Đăng xuất", exact: true }).click();
-  await login(page, "admin");
-  await page
-    .getByRole("textbox", { name: "Tìm địa điểm, địa chỉ…" })
-    .fill(name);
-  await page.getByRole("button", { name, exact: true }).click();
-  await page.getByRole("checkbox", { name: /Tôi đã kiểm tra địa điểm trùng/ }).check();
-  await page
-    .getByRole("button", { name: "Duyệt nội dung", exact: true })
-    .last()
-    .click();
-  await expect(
-    page.getByRole("button", { name: "Xuất bản", exact: true }),
-  ).toBeEnabled();
-  await page.getByRole("button", { name: "Xuất bản", exact: true }).click();
-  await expect(
-    page.getByText("Đã xuất bản. Du khách có thể xem và nghe nội dung này.", {
-      exact: true,
-    }),
-  ).toBeVisible();
   const guestContext = await browser.newContext();
   const guest = await guestContext.newPage();
   await mockSpeech(guest);
@@ -348,7 +320,7 @@ test("Wikipedia AI import fills a draft and persists its source", async ({
         response.request().method() === "POST",
       { timeout: 10000 },
     ),
-    page.getByRole("button", { name: "Lưu bản nháp", exact: true }).click(),
+    page.getByRole("button", { name: "Lưu thay đổi", exact: true }).click(),
   ]);
   expect(response.status()).toBe(201);
   const poi = await response.json();
@@ -358,44 +330,105 @@ test("Wikipedia AI import fills a draft and persists its source", async ({
   expect(poi.translations.vi.text).toContain("Wikipedia");
   expect(poi.translations.en.text).toContain("Wikipedia");
   await page.keyboard.press("Escape");
+  await page
+    .getByRole("textbox", { name: "Tìm địa điểm, địa chỉ…" })
+    .fill(name);
   await page.getByRole("button", { name, exact: true }).click();
   await expect(
     page.getByRole("link", { name: `${name} · Wikipedia`, exact: true }),
   ).toHaveAttribute("href", sourceUrl + "?oldid=123");
 });
 
-test("cloud AI request resumes after reload and returns a private draft", async ({ page }) => {
+test("cloud AI request resumes after reload and returns a private draft", async ({
+  page,
+}) => {
   let completed = false;
   const name = "Bản nháp từ máy Ollama";
-  await page.route("**/api/v1/admin/ai/status", (route) => route.fulfill({
-    json: {mode: "worker", ready: true, model: "qwen3:4b", message: "Máy AI sẵn sàng"},
-  }));
-  await page.route("**/api/v1/admin/ai/jobs", (route) => route.fulfill({
-    status: 202, json: {id: "resume-test", status: "queued", result: null, error: ""},
-  }));
-  await page.route("**/api/v1/admin/ai/jobs/resume-test", (route) => route.fulfill({json: {
-    id: "resume-test", status: completed ? "completed" : "queued", error: "",
-    result: completed ? {
-      draft: {name, address: "Địa chỉ cần kiểm tra", category_id: "culture", latitude: null, longitude: null,
-        translations: {vi: {title: name, text: "Thuyết minh cần kiểm tra."}, en: {title: "Draft", text: "Review this draft."}},
-        source: {url: "https://vi.wikipedia.org/wiki/Worker_test", title: name, revision_id: 123,
-          retrieved_at: "2026-10-23T03:00:00Z", license: "CC BY-SA", model: "qwen3:4b", warnings: [],
-          wikidata_id: null, coordinate_source: null, image_url: null, image_page_url: null,
-          image_author: null, image_license: null}},
-      missing_fields: ["latitude", "longitude", "image"], elapsed_seconds: 60, existing_poi: null,
-    } : null,
-  }}));
+  await page.route("**/api/v1/admin/ai/status", (route) =>
+    route.fulfill({
+      json: {
+        mode: "worker",
+        ready: true,
+        model: "qwen3:4b",
+        message: "Máy AI sẵn sàng",
+      },
+    }),
+  );
+  await page.route("**/api/v1/admin/ai/jobs", (route) =>
+    route.fulfill({
+      status: 202,
+      json: { id: "resume-test", status: "queued", result: null, error: "" },
+    }),
+  );
+  await page.route("**/api/v1/admin/ai/jobs/resume-test", (route) =>
+    route.fulfill({
+      json: {
+        id: "resume-test",
+        status: completed ? "completed" : "queued",
+        error: "",
+        result: completed
+          ? {
+              draft: {
+                name,
+                address: "Địa chỉ cần kiểm tra",
+                category_id: "culture",
+                latitude: null,
+                longitude: null,
+                translations: {
+                  vi: { title: name, text: "Thuyết minh cần kiểm tra." },
+                  en: { title: "Draft", text: "Review this draft." },
+                },
+                source: {
+                  url: "https://vi.wikipedia.org/wiki/Worker_test",
+                  title: name,
+                  revision_id: 123,
+                  retrieved_at: "2026-10-23T03:00:00Z",
+                  license: "CC BY-SA",
+                  model: "qwen3:4b",
+                  warnings: [],
+                  wikidata_id: null,
+                  coordinate_source: null,
+                  image_url: null,
+                  image_page_url: null,
+                  image_author: null,
+                  image_license: null,
+                },
+              },
+              missing_fields: ["latitude", "longitude", "image"],
+              elapsed_seconds: 60,
+              existing_poi: null,
+            }
+          : null,
+      },
+    }),
+  );
   await login(page);
-  await page.getByRole("button", {name: "Thêm địa điểm", exact: true}).click();
-  await page.getByLabel("URL Wikipedia", {exact: true}).fill("https://vi.wikipedia.org/wiki/Worker_test");
-  await page.getByRole("button", {name: "Tạo thông tin bằng AI", exact: true}).click();
-  await expect.poll(() => page.evaluate(() => localStorage.getItem("quan1-ai-job"))).toBe("resume-test");
+  await page
+    .getByRole("button", { name: "Thêm địa điểm", exact: true })
+    .click();
+  await page
+    .getByLabel("URL Wikipedia", { exact: true })
+    .fill("https://vi.wikipedia.org/wiki/Worker_test");
+  await page
+    .getByRole("button", { name: "Tạo thông tin bằng AI", exact: true })
+    .click();
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem("quan1-ai-job")))
+    .toBe("resume-test");
   page.once("dialog", (dialog) => dialog.accept());
   await page.reload();
-  await page.getByRole("button", {name: "Thêm địa điểm", exact: true}).click();
+  await page
+    .getByRole("button", { name: "Thêm địa điểm", exact: true })
+    .click();
   await expect(page.getByText(/Đang chờ máy AI nhận việc/)).toBeVisible();
   completed = true;
-  await expect(page.getByLabel("Tên địa điểm", {exact: false})).toHaveValue(name);
-  await expect.poll(() => page.evaluate(() => localStorage.getItem("quan1-ai-job"))).toBeNull();
-  await expect(page.getByRole("button", {name: "Lưu bản nháp", exact: true})).toBeEnabled();
+  await expect(page.getByLabel("Tên địa điểm", { exact: false })).toHaveValue(
+    name,
+  );
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem("quan1-ai-job")))
+    .toBeNull();
+  await expect(
+    page.getByRole("button", { name: "Lưu thay đổi", exact: true }),
+  ).toBeEnabled();
 });

@@ -10,7 +10,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleHelp,
-  ExternalLink,
+  Eye,
   FileCheck2,
   Globe2,
   Grid2X2,
@@ -36,7 +36,6 @@ import type {
   Language,
   Page,
   Poi,
-  Status,
   Summary,
   User,
 } from "@quan1/contracts";
@@ -105,7 +104,7 @@ export function App() {
   const [debounced, setDebounced] = useState("");
   const [status, setStatus] = useState("");
   const [category, setCategory] = useState("");
-  const [sort, setSort] = useState("updated");
+  const [sort, setSort] = useState("views");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(() =>
     matchMedia("(max-width: 760px)").matches ? 4 : 8,
@@ -116,6 +115,7 @@ export function App() {
   const [authError, setAuthError] = useState("");
   const [refresh, setRefresh] = useState(0);
   const [editing, setEditing] = useState<Poi | "new" | null>(null);
+  const [previewing, setPreviewing] = useState(false);
   const [toast, setToast] = useState("");
   const [categoryDialog, setCategoryDialog] = useState(false);
   const [categoryName, setCategoryName] = useState("");
@@ -515,7 +515,7 @@ export function App() {
               <h1>{title}</h1>
               <p>{subtitle}</p>
             </div>
-            {view !== "categories" && (
+            {view !== "categories" && user.role === "admin" && (
               <button
                 className="button primary"
                 onClick={() => setEditing("new")}
@@ -732,8 +732,13 @@ export function App() {
                         setSort(e.target.value);
                         setPage(1);
                       }}
-                      aria-label={t.updated}
+                      aria-label={
+                        locale === "vi" ? "Sắp xếp địa điểm" : "Sort places"
+                      }
                     >
+                      <option value="views">
+                        {locale === "vi" ? "Lượt xem giảm dần" : "Most viewed"}
+                      </option>
                       <option value="updated">{t.updated}</option>
                       <option value="name">{t.nameSort}</option>
                     </select>
@@ -883,6 +888,14 @@ export function App() {
                       </button>
                       <div className="place-card-content">
                         <Badge status={p.status} t={t} />
+                        {user.role === "admin" && (
+                          <p className="card-statistics">
+                            {locale === "vi" ? "Lượt xem" : "Views"}:{" "}
+                            {p.view_count ?? 0} ·{" "}
+                            {locale === "vi" ? "Lượt nghe" : "Listening starts"}
+                            : {p.listen_count ?? 0}
+                          </p>
+                        )}
                         <h3>
                           <button onClick={() => setEditing(p)}>
                             {p.name}
@@ -896,6 +909,16 @@ export function App() {
                           <span>{categoryFor(p.category_id)?.name}</span>
                           <span className="language-chips">VI · EN</span>
                         </div>
+                        <button
+                          className="button secondary small"
+                          onClick={() => {
+                            setPreviewing(true);
+                            setEditing(p);
+                          }}
+                        >
+                          <Eye size={14} />
+                          {locale === "vi" ? "Xem trước" : "Preview"}
+                        </button>
                       </div>
                     </article>
                   ))}
@@ -910,6 +933,16 @@ export function App() {
                         <th>{t.language}</th>
                         <th>{t.audio}</th>
                         <th>{t.status}</th>
+                        {user.role === "admin" && (
+                          <>
+                            <th>{locale === "vi" ? "Lượt xem" : "Views"}</th>
+                            <th>
+                              {locale === "vi"
+                                ? "Lượt nghe"
+                                : "Listening starts"}
+                            </th>
+                          </>
+                        )}
                         <th>{t.updatedAt}</th>
                         <th className="sr-only">{t.actions}</th>
                       </tr>
@@ -993,6 +1026,12 @@ export function App() {
                                 </small>
                               )}
                             </td>
+                            {user.role === "admin" && (
+                              <>
+                                <td>{p.view_count ?? 0}</td>
+                                <td>{p.listen_count ?? 0}</td>
+                              </>
+                            )}
                             <td>
                               <span className="date-cell">
                                 {new Intl.DateTimeFormat(
@@ -1007,6 +1046,16 @@ export function App() {
                               </span>
                             </td>
                             <td>
+                              <button
+                                className="row-edit"
+                                onClick={() => {
+                                  setPreviewing(true);
+                                  setEditing(p);
+                                }}
+                                aria-label={`${locale === "vi" ? "Xem trước" : "Preview"}: ${p.name}`}
+                              >
+                                <Eye size={17} />
+                              </button>
                               <button
                                 className="row-edit"
                                 onClick={() => setEditing(p)}
@@ -1149,11 +1198,15 @@ export function App() {
       {editing && (
         <Editor
           initial={editing}
+          initialPreview={previewing}
           categories={categories}
           languages={languages}
           user={user}
           locale={locale}
-          onClose={() => setEditing(null)}
+          onClose={() => {
+            setEditing(null);
+            setPreviewing(false);
+          }}
           onSaved={notify}
         />
       )}

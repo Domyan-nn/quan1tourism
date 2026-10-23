@@ -99,6 +99,9 @@ test("admin adds a language and it appears in the editor and visitor selector", 
   await expect(
     page.locator(".language-registry").getByText(nativeName, { exact: true }),
   ).toBeVisible();
+  await page
+    .getByRole("textbox", { name: "Tìm địa điểm, địa chỉ…" })
+    .fill("Dinh Độc Lập");
   await page.getByRole("button", { name: "Dinh Độc Lập", exact: true }).click();
   await page
     .getByRole("button", { name: "Bước 2: Nội dung đa ngôn ngữ", exact: true })

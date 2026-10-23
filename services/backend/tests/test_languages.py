@@ -23,7 +23,7 @@ def test_registry_is_seeded_by_migration_and_admin_controls_it(env):
     assert next(item for item in languages if item["code"] == "ar")["direction"] == "rtl"
     url = "/api/v1/admin/languages"
     assert client.post(url, json=language_payload()).status_code == 401
-    login(client)
+    login(client, "editor")
     assert client.get(url).status_code == 200
     assert client.post(url, json=language_payload()).status_code == 403
     login(client, "admin")
@@ -42,7 +42,7 @@ def test_new_language_works_without_code_changes_and_hides_when_disabled(env):
     client, factory, _ = env
     login(client, "admin")
     language = client.post("/api/v1/admin/languages", json=language_payload()).json()
-    login(client)
+    login(client, "admin")
     payload = draft_payload()
     payload["translations"]["ms"] = {"title": "Kisah Saigon", "text": "Selamat datang ke Saigon."}
     poi = client.post("/api/v1/admin/pois", json=payload).json()
@@ -61,7 +61,7 @@ def test_new_language_works_without_code_changes_and_hides_when_disabled(env):
 
 def test_unknown_missing_and_partial_translations_do_not_leak_or_publish(env):
     client, _, _ = env
-    login(client)
+    login(client, "admin")
     payload = draft_payload()
     payload["translations"]["xx"] = {"title": "Unknown", "text": "Unknown"}
     assert client.post("/api/v1/admin/pois", json=payload).status_code == 422
@@ -77,7 +77,7 @@ def test_required_language_is_data_and_partial_updates_keep_other_translations(e
     client, factory, _ = env
     login(client, "admin")
     language = client.post("/api/v1/admin/languages", json=language_payload(required=True)).json()
-    login(client)
+    login(client, "admin")
     poi = create(client)
     assert action(client, poi, "submit").status_code == 422
     poi = client.put(

@@ -6,6 +6,8 @@ import {
   Globe2,
   Headphones,
   MapPin,
+  Map,
+  List,
   Search,
   Volume2,
 } from "lucide-react";
@@ -14,9 +16,11 @@ import {
   mediaUrl,
   SourceAttribution,
   SpeechPlayer,
+  recordEngagement,
 } from "@quan1/api-client";
 import type { Language, Locale, Poi } from "@quan1/contracts";
 import { AuthControls } from "./Auth";
+import { MapExplorer } from "./MapExplorer";
 import "@fontsource/be-vietnam-pro/400.css";
 import "@fontsource/be-vietnam-pro/500.css";
 import "@fontsource/be-vietnam-pro/600.css";
@@ -30,6 +34,7 @@ function Visitor() {
   const [languageError, setLanguageError] = useState("");
   const [pois, setPois] = useState<Poi[]>([]);
   const [selected, setSelected] = useState<Poi | null>(null);
+  const [view, setView] = useState<"list" | "map">("list");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
@@ -100,7 +105,7 @@ function Visitor() {
   }, [locale, language?.code, retry]);
   const narration = selected?.translations[locale];
   const list = pois.filter((p) =>
-    `${p.name} ${p.translations[locale]?.title ?? ""}`
+    `${p.name} ${p.address} ${p.translations[locale]?.title ?? ""}`
       .toLocaleLowerCase()
       .includes(query.toLocaleLowerCase()),
   );
@@ -108,6 +113,12 @@ function Visitor() {
     setSelected(null);
     history.replaceState(null, "", location.pathname);
     setRetry((n) => n + 1);
+  }
+  function openDetail(poi: Poi) {
+    setSelected(poi);
+    recordEngagement(poi.id, "view");
+    history.replaceState(null, "", `?poi=${encodeURIComponent(poi.id)}`);
+    window.scrollTo(0, 0);
   }
   return (
     <>
@@ -194,7 +205,7 @@ function Visitor() {
             </div>
             <span className="eyebrow">QUẬN 1 · SAIGON STORIES</span>
             <h1 lang={locale} dir={language?.direction}>
-              {narration?.title}
+              {narration?.title || selected.name}
             </h1>
             <p className="address">
               <MapPin size={15} />
@@ -224,6 +235,7 @@ function Visitor() {
                   text={narration.text}
                   speechLocale={language.speech_locale}
                   uiLocale={vi ? "vi" : "en"}
+                  onStarted={() => recordEngagement(selected.id, "listen")}
                 />
               ) : (
                 <p className="notice">
@@ -282,6 +294,25 @@ function Visitor() {
                 />
               </label>
             </div>
+            <div
+              className="map-view-toggle"
+              aria-label={vi ? "Chế độ xem địa điểm" : "Places view"}
+            >
+              <button
+                aria-pressed={view === "list"}
+                onClick={() => setView("list")}
+              >
+                <List size={17} />
+                {vi ? "Danh sách" : "List"}
+              </button>
+              <button
+                aria-pressed={view === "map"}
+                onClick={() => setView("map")}
+              >
+                <Map size={17} />
+                {vi ? "Bản đồ" : "Map"}
+              </button>
+            </div>
             {list.length === 0 ? (
               <div className="empty">
                 <Headphones size={37} />
@@ -300,21 +331,20 @@ function Visitor() {
                       : "Places will appear here once reviewed and published. See you soon!"}
                 </p>
               </div>
+            ) : view === "map" ? (
+              <MapExplorer
+                places={list}
+                languages={languages}
+                locale={locale}
+                onDetail={openDetail}
+              />
             ) : (
               <div className="place-list">
                 {list.map((p) => (
                   <button
                     className="place"
                     key={p.id}
-                    onClick={() => {
-                      setSelected(p);
-                      history.replaceState(
-                        null,
-                        "",
-                        `?poi=${encodeURIComponent(p.id)}`,
-                      );
-                      window.scrollTo(0, 0);
-                    }}
+                    onClick={() => openDetail(p)}
                   >
                     <div className="place-image">
                       {p.image_id || p.source?.image_url ? (
@@ -333,9 +363,13 @@ function Visitor() {
                     <div>
                       <small>QUẬN 1</small>
                       <h3 lang={locale} dir={language?.direction}>
-                        {p.translations[locale]?.title}
+                        {p.translations[locale]?.title || p.name}
                       </h3>
                       <p>{p.address}</p>
+                      <p className="place-description">
+                        {p.short_description ||
+                          p.translations[locale]?.text.slice(0, 150)}
+                      </p>
                       <span>
                         <Headphones size={14} />
                         {vi ? "Lắng nghe câu chuyện" : "Listen to the story"}

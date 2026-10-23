@@ -1,13 +1,14 @@
 # Cơ sở dữ liệu thuyết minh đa ngôn ngữ
 
-Schema được tạo đầy đủ bằng Alembic (`0001` → `0002` → `0003` → `0004`). Đã khởi tạo database `quan1tourism` trên PostgreSQL 18 local và chuyển dữ liệu từ SQLite. Backend đọc `DATABASE_URL` trong `.runtime/local.env`; biến shell được ưu tiên. Nếu không có cấu hình, vẫn hỗ trợ SQLite ở `.runtime/quan1.db`. PostGIS là tùy chọn và chỉ tạo khi extension có sẵn trên máy chủ.
+Schema được tạo đầy đủ bằng Alembic (`0001` → `0008`). Đã khởi tạo database `quan1tourism` trên PostgreSQL 18 local và chuyển dữ liệu từ SQLite. Backend đọc `DATABASE_URL` trong `.runtime/local.env`; biến shell được ưu tiên. Nếu không có cấu hình, vẫn hỗ trợ SQLite ở `.runtime/quan1.db`. PostGIS là tùy chọn và chỉ tạo khi extension có sẵn trên máy chủ.
 
 | Bảng | Nội dung và ràng buộc |
 | --- | --- |
 | `users` | Email duy nhất, tên, mật khẩu Argon2; vai trò visitor/editor/reviewer/admin |
 | `sessions` | Hash token, khóa ngoại tài khoản, hạn phiên; cookie HttpOnly |
 | `categories` | Tên danh mục duy nhất, màu hiển thị |
-| `pois` | Tên/địa chỉ, danh mục, tọa độ hợp lệ hoặc cặp NULL, trạng thái, revision, ảnh, ghi chú; `source` JSON lưu nguồn Wikipedia, revision, model, cảnh báo, nguồn tọa độ và ghi công ảnh Commons |
+| `pois` | Tên/địa chỉ, danh mục, tọa độ hợp lệ hoặc cặp NULL, trạng thái, revision, ảnh, ghi chú; mô tả ngắn và bộ đếm `view_count`/`listen_count` mặc định 0, không âm; `source` JSON lưu nguồn Wikipedia, revision, model, cảnh báo, nguồn tọa độ và ghi công ảnh Commons |
+| `poi_engagements` | Khóa chính `(session_hash, poi_id, kind)`, thời điểm ghi nhận gần nhất, cửa sổ 30 phút độc lập cho view/listen |
 | `languages` | Mã ngôn ngữ duy nhất (tối đa 35 ký tự), tên quốc tế/bản địa, mã giọng BCP 47, bật/tắt, bắt buộc, thứ tự, hướng chữ |
 | `poi_translations` | Khóa chính `(poi_id, locale)`, khóa ngoại địa điểm/ngôn ngữ; tiêu đề tối đa 180 ký tự, văn bản tối đa 30.000 ký tự |
 | `media_assets` | Ảnh được kiểm tra nội dung/MIME, checksum, quyền công khai; giữ các cột/tệp audio lịch sử để tương thích dữ liệu cũ |
@@ -45,6 +46,8 @@ Tiếng Việt luôn bật và bắt buộc. Tiếng Anh bắt buộc mặc đ�
 
 ## Văn bản và giọng đọc
 
-Văn bản là dữ liệu gốc. API nội dung trả `title`, `text`, `tts_ready`; chỉ công khai phiên bản đã xuất bản có đủ văn bản ở ngôn ngữ được chọn. Gửi một số ngôn ngữ khi cập nhật giữ nguyên các bản dịch khác; gửi cặp chuỗi rỗng để xóa nội dung một bản dịch trong nháp.
+Văn bản là dữ liệu gốc. API nội dung trả `title`, `text`, `tts_ready`; chỉ công khai địa điểm có trạng thái công bố và snapshot hiện hành. Thẻ cho chọn các ngôn ngữ có đủ văn bản; API công khai không trả bộ đếm. Gửi một số ngôn ngữ khi cập nhật giữ nguyên các bản dịch khác; gửi cặp chuỗi rỗng để xóa nội dung một bản dịch trong nháp.
 
 Trình duyệt dùng `SpeechSynthesis` đọc văn bản, chọn giọng theo `speech_locale`, điều chỉnh tốc độ và vị trí đọc. Không có tệp giọng đọc mới lưu vào DB, ổ đĩa hay object storage. `tts_ready` chỉ xác nhận đủ văn bản, không chứng nhận thiết bị có giọng phù hợp. Giọng có sẵn và khả năng cần mạng phụ thuộc thiết bị/trình duyệt. AI local có thể soạn bản nháp cho các ngôn ngữ được chọn khi nhập Wikipedia; bản dịch vẫn cần người biên tập kiểm tra.
+
+Migration `0008` thêm mô tả ngắn, hai bộ đếm và bảng chống đếm lặp, không sửa snapshot lịch sử hay thêm `display_order`. Bảng `poi_engagements` bật RLS khi dùng PostgreSQL/Supabase, tương tự các bảng riêng hiện có. [Quy tắc thống kê và bản đồ](MAPS-STATISTICS.md).

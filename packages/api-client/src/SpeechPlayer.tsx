@@ -25,10 +25,12 @@ export function SpeechPlayer({
   text,
   speechLocale,
   uiLocale = "vi",
+  onStarted,
 }: {
   text: string;
   speechLocale: string;
   uiLocale?: string;
+  onStarted?: () => void;
 }) {
   const vi = uiLocale === "vi";
   const id = useId();
@@ -45,6 +47,9 @@ export function SpeechPlayer({
   const generation = useRef(0);
   const utterance = useRef<SpeechSynthesisUtterance | null>(null);
   const cursor = useRef(0);
+  const started = useRef(false);
+  const onStartedRef = useRef(onStarted);
+  onStartedRef.current = onStarted;
   const matching = voices.filter(
     (voice) =>
       voice.lang.replace(/_/g, "-").split("-")[0].toLowerCase() ===
@@ -65,6 +70,7 @@ export function SpeechPlayer({
   }, [supported]);
 
   useEffect(() => {
+    started.current = false;
     cursor.current = 0;
     setPosition(0);
     setState("idle");
@@ -107,6 +113,7 @@ export function SpeechPlayer({
 
   function play(start = cursor.current) {
     if (!supported || !voice || !text.trim()) return;
+    if (state !== "paused") started.current = false;
     window.dispatchEvent(new CustomEvent("quan1-speech-start", { detail: id }));
     generation.current++;
     const token = generation.current;
@@ -130,6 +137,12 @@ export function SpeechPlayer({
       item.lang = speechLocale;
       item.voice = voice!;
       item.rate = rate;
+      item.onstart = () => {
+        if (generation.current === token && !started.current) {
+          started.current = true;
+          onStartedRef.current?.();
+        }
+      };
       cursor.current = offset;
       setPosition(offset);
       item.onboundary = (event) => {

@@ -17,7 +17,9 @@ from sqlalchemy.orm import Session as DbSession
 from sqlalchemy.orm.exc import StaleDataError
 
 from .auth import COOKIE, COOKIE_SECURE, current_user, digest, optional_user, passwords, require
-from .content import audit, check_revision, get_poi, iso, serialize, text_snapshot, touch, transition
+from .content import audit, check_revision, get_poi, iso, ready, serialize, text_snapshot, touch, transition
+from .engagement import ENGAGEMENT_COOKIE, record
+from .geocoding import search_places
 from .languages import get_language, language_data, languages
 from .db import MEDIA_ROOT, get_db
 from .models import Audit, Category, Language, Media, Poi, Release, Session, User, now, uid
@@ -36,12 +38,20 @@ registration_attempts: dict[str, deque] = defaultdict(deque)
 @app.middleware("http")
 async def request_context(request: Request, call_next):
     request_id = uuid.uuid4().hex
+    visit_session = request.cookies.get(ENGAGEMENT_COOKIE, "")
+    new_visit = len(visit_session) != 64 or any(c not in "0123456789abcdef" for c in visit_session)
+    request.state.visit_session = secrets.token_hex(32) if new_visit else visit_session
     if (
         request.method in ("POST", "PUT", "PATCH", "DELETE")
         and request.headers.get("X-Requested-With") != "Quan1Admin"
     ):
         return JSONResponse({"detail": "Yêu cầu không hợp lệ.", "request_id": request_id}, status_code=403)
     response = await call_next(request)
+    if request.url.path.startswith("/api/v1/pois"):
+        response.headers["Cache-Control"] = "no-store"
+        if new_visit:
+            response.set_cookie(ENGAGEMENT_COOKIE, request.state.visit_session, httponly=True,
+                                secure=COOKIE_SECURE, samesite="strict", path="/")
     response.headers["X-Request-ID"] = request_id
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "same-origin"
@@ -265,7 +275,7 @@ def list_pois(
     q: str = "",
     status: str = "",
     category: str = "",
-    sort: str = "updated",
+    sort: str = "views",
     page: int = Query(1, ge=1),
     page_size: int = Query(8, ge=1, le=100),
     db: DbSession = Depends(get_db),
@@ -276,12 +286,14 @@ def list_pois(
         query = query.where(Poi.status == status)
     if category:
         query = query.where(Poi.category_id == category)
-    query = query.order_by(Poi.name if sort == "name" else Poi.updated_at.desc(), Poi.id)
+    ordering = Poi.name if sort == "name" else Poi.updated_at.desc() if sort == "updated" else Poi.view_count.desc()
+    query = query.order_by(ordering, Poi.id.asc())
     pois = list(db.scalars(query))
     if q:
         pois = [p for p in pois if normalized(q.strip()) in normalized(p.name + " " + p.address)]
     return {
-        "items": [serialize(p, db) for p in pois[(page - 1) * page_size : page * page_size]],
+        "items": [serialize(p, db, statistics=user.role == "admin")
+                  for p in pois[(page - 1) * page_size : page * page_size]],
         "total": len(pois),
         "page": page,
         "page_size": page_size,
@@ -305,10 +317,11 @@ def summary(db: DbSession = Depends(get_db), user: User = Depends(editors)):
 
 
 def apply_input(poi: Poi, data: PoiInput, db: DbSession):
-    if not data.name.strip() or not db.get(Category, data.category_id):
-        raise HTTPException(422, "Vui lòng nhập tên và chọn danh mục hợp lệ.")
-    for key in ("name", "address", "category_id", "latitude", "longitude"):
-        setattr(poi, key, getattr(data, key).strip() if key in ("name", "address") else getattr(data, key))
+    if not data.name.strip() or not data.address.strip() or not db.get(Category, data.category_id):
+        raise HTTPException(422, "Vui lòng nhập tên, địa chỉ và chọn danh mục hợp lệ.")
+    for key in ("name", "address", "short_description", "category_id", "latitude", "longitude"):
+        setattr(poi, key, getattr(data, key).strip()
+                if key in ("name", "address", "short_description") else getattr(data, key))
     translations = dict(poi.translations or {})
     for locale, tr in data.translations.items():
         get_language(db, locale)
@@ -316,6 +329,27 @@ def apply_input(poi: Poi, data: PoiInput, db: DbSession):
     poi.translations = translations
     if "source" in data.model_fields_set:
         poi.source = data.source.model_dump() if data.source else None
+
+
+def save_visibility(db, poi, status):
+    if status is None:
+        return
+    poi.status = status
+    if status == "published":
+        ready(poi, db)
+    for release in db.scalars(select(Release).where(Release.poi_id == poi.id, Release.is_current.is_(True))):
+        release.is_current = False
+    if status == "published":
+        snapshot = serialize(poi, db)
+        snapshot["has_published"] = True
+        db.add(Release(poi_id=poi.id, revision=poi.revision, snapshot=snapshot))
+        if poi.image_id and (media := db.get(Media, poi.image_id)):
+            media.is_public = True
+
+
+@app.get("/api/v1/admin/map-search")
+def map_search(q: str = Query(min_length=2, max_length=300), user: User = Depends(require("admin"))):
+    return {"items": search_places(q)}
 
 
 @app.get("/api/v1/admin/ai/status")
@@ -343,37 +377,39 @@ def check_duplicates(data: PoiInput, db: DbSession = Depends(get_db), user: User
 
 
 @app.post("/api/v1/admin/pois", status_code=201)
-def create_poi(data: PoiInput, db: DbSession = Depends(get_db), user: User = Depends(editors)):
+def create_poi(data: PoiInput, db: DbSession = Depends(get_db), user: User = Depends(require("admin"))):
     ensure_unique(db, data.name, data.source.model_dump() if data.source else None)
     poi = Poi(id=uid(), translations={})
     apply_input(poi, data, db)
     db.add(poi)
     try:
         db.flush()
+        save_visibility(db, poi, data.status)
         reserve_identities(db, poi)
         audit(db, user, poi, "create")
         db.commit()
     except IntegrityError:
         db.rollback()
         raise HTTPException(409, "Địa điểm vừa được tạo ở phiên khác. Tìm địa điểm hiện có để kiểm tra.")
-    return serialize(poi, db)
+    return serialize(poi, db, statistics=True)
 
 
 @app.get("/api/v1/admin/pois/{poi_id}")
 def detail(poi_id: str, db: DbSession = Depends(get_db), user: User = Depends(editors)):
-    return serialize(get_poi(db, poi_id), db)
+    return serialize(get_poi(db, poi_id), db, statistics=user.role == "admin")
 
 
 @app.put("/api/v1/admin/pois/{poi_id}")
-def update_poi(poi_id: str, data: PoiInput, db: DbSession = Depends(get_db), user: User = Depends(editors)):
+def update_poi(poi_id: str, data: PoiInput, db: DbSession = Depends(get_db), user: User = Depends(require("admin"))):
     poi = get_poi(db, poi_id)
     check_revision(poi, data.revision)
-    if poi.status in ("in_review", "archived"):
+    if poi.status in ("in_review", "archived") and data.status is None:
         raise HTTPException(409, "Hãy trả nội dung về bản nháp trước khi chỉnh sửa.")
     ensure_unique(db, data.name, data.source.model_dump() if data.source else None, poi.id)
     apply_input(poi, data, db)
     poi.status = "draft"
     touch(poi)
+    save_visibility(db, poi, data.status or "draft")
     audit(db, user, poi, "update")
     try:
         reserve_identities(db, poi)
@@ -381,15 +417,15 @@ def update_poi(poi_id: str, data: PoiInput, db: DbSession = Depends(get_db), use
     except IntegrityError:
         db.rollback()
         raise HTTPException(409, "Địa điểm trùng với nội dung vừa được lưu ở phiên khác.")
-    return serialize(poi, db)
+    return serialize(poi, db, statistics=True)
 
 
 @app.post("/api/v1/admin/pois/{poi_id}/actions")
-def action(poi_id: str, data: ActionInput, db: DbSession = Depends(get_db), user: User = Depends(editors)):
+def action(poi_id: str, data: ActionInput, db: DbSession = Depends(get_db), user: User = Depends(require("admin"))):
     poi = get_poi(db, poi_id)
     transition(db, poi, user, data)
     db.commit()
-    return serialize(poi, db)
+    return serialize(poi, db, statistics=True)
 
 
 @app.get("/api/v1/admin/pois/{poi_id}/history")
@@ -427,7 +463,7 @@ async def upload(
     kind: str = Query(pattern="^image$"),
     revision: int = Query(ge=1),
     db: DbSession = Depends(get_db),
-    user: User = Depends(editors),
+    user: User = Depends(require("admin")),
 ):
     poi = get_poi(db, poi_id)
     check_revision(poi, revision)
@@ -480,7 +516,7 @@ async def upload(
         db.rollback()
         path.unlink(missing_ok=True)
         raise
-    return serialize(poi, db)
+    return serialize(poi, db, statistics=True)
 
 
 def digest_bytes(value):
@@ -512,23 +548,35 @@ def public_pois(locale: str = Query("vi", max_length=35), db: DbSession = Depend
         "items": [
             text_snapshot(r.snapshot)
             for r in db.scalars(
-                select(Release).where(Release.is_current.is_(True)).order_by(Release.created_at.desc())
+                select(Release).join(Poi, Poi.id == Release.poi_id)
+                .where(Release.is_current.is_(True), Poi.status == "published")
+                .order_by(Poi.view_count.desc(), Poi.id.asc())
             )
-            if text_snapshot(r.snapshot)["translations"].get(locale, {}).get("tts_ready")
         ]
     }
 
 
 @app.get("/api/v1/pois/{poi_id}")
-def public_poi(poi_id: str, locale: str = Query("vi", max_length=35), db: DbSession = Depends(get_db)):
+def public_poi(poi_id: str, request: Request, locale: str = Query("vi", max_length=35),
+               db: DbSession = Depends(get_db)):
     get_language(db, locale, enabled_only=True)
-    release = db.scalar(select(Release).where(Release.poi_id == poi_id, Release.is_current.is_(True)))
+    release = db.scalar(select(Release).join(Poi, Poi.id == Release.poi_id).where(
+        Release.poi_id == poi_id, Release.is_current.is_(True), Poi.status == "published"))
     if not release:
         raise HTTPException(404, "Địa điểm này chưa được xuất bản hoặc đã được lưu trữ.")
     snapshot = text_snapshot(release.snapshot)
-    if not snapshot["translations"].get(locale, {}).get("tts_ready"):
-        raise HTTPException(404, "Chưa có thuyết minh cho ngôn ngữ này. Vui lòng chọn ngôn ngữ khác.")
+    record(db, request, poi_id, "view")
     return snapshot
+
+
+@app.post("/api/v1/pois/{poi_id}/events/{kind}", status_code=204)
+def public_event(poi_id: str, kind: str, request: Request, db: DbSession = Depends(get_db)):
+    if kind not in ("view", "listen"):
+        raise HTTPException(422, "Sự kiện không hợp lệ.")
+    if not db.scalar(select(Release.id).join(Poi, Poi.id == Release.poi_id).where(
+        Release.poi_id == poi_id, Release.is_current.is_(True), Poi.status == "published")):
+        raise HTTPException(404, "Địa điểm chưa được công bố.")
+    record(db, request, poi_id, kind)
 
 
 # Mount last so that authenticated APIs always take precedence over static files.

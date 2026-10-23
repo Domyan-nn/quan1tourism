@@ -44,3 +44,11 @@ export function mediaUrl(id: string) {
 }
 export { SpeechPlayer } from "./SpeechPlayer";
 export { SourceAttribution } from "./SourceAttribution";
+export { PlaceMap, LocationEditor } from "./PlaceMap";
+
+export function recordEngagement(id: string, kind: "view" | "listen") {
+  // Statistics must never prevent someone from reading or listening.
+  void api(`/pois/${encodeURIComponent(id)}/events/${kind}`, {
+    method: "POST",
+  }).catch(() => {});
+}

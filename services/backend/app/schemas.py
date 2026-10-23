@@ -93,8 +93,11 @@ class TranslationInput(BaseModel):
 
 
 class PoiInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=1, max_length=180)
     address: str = Field(default="", max_length=300)
+    short_description: str = Field(default="", max_length=2000)
+    status: Literal["draft", "published", "archived"] | None = None
     category_id: str
     latitude: float | None = Field(default=None, ge=-90, le=90)
     longitude: float | None = Field(default=None, ge=-180, le=180)

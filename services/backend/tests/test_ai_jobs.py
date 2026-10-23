@@ -23,7 +23,7 @@ def test_worker_queue_roundtrip_is_private_durable_and_never_publishes(env, upst
     client, factory, _ = env
     monkeypatch.setenv("AI_MODE", "worker")
     monkeypatch.setenv("AI_WORKER_TOKEN", TOKEN)
-    login(client)
+    login(client, "admin")
     assert not client.get("/api/v1/admin/ai/status").json()["ready"]
     assert client.post("/api/v1/worker/claim", json={}).status_code == 401
     assert client.post("/api/v1/worker/heartbeat", headers=WORKER,
@@ -65,7 +65,7 @@ def test_expired_worker_lease_is_reclaimed_and_old_results_rejected(env, upstrea
     client, factory, _ = env
     monkeypatch.setenv("AI_MODE", "worker")
     monkeypatch.setenv("AI_WORKER_TOKEN", TOKEN)
-    login(client)
+    login(client, "admin")
     job_id = enqueue(client)
     first = client.post("/api/v1/worker/claim", headers=WORKER, json={}).json()["job"]
     with factory() as db:
@@ -82,7 +82,7 @@ def test_expired_worker_lease_is_reclaimed_and_old_results_rejected(env, upstrea
 
 def test_duplicate_name_is_checked_on_create_update_and_before_ai(env, upstream, monkeypatch):  # noqa: F811
     client, _, _ = env
-    login(client)
+    login(client, "admin")
     poi = create(client, "Nhà Văn hóa Thanh niên")
     payload = draft_payload() | {"name": "  nha van HOA thanh-nien "}
     assert client.post("/api/v1/admin/pois", json=payload).status_code == 409
@@ -99,7 +99,7 @@ def test_duplicate_name_is_checked_on_create_update_and_before_ai(env, upstream,
 
 def test_only_admin_can_confirm_review_and_publish(env):
     client, _, _ = env
-    login(client)
+    login(client, "admin")
     poi = action(client, create(client), "submit").json()
     login(client, "reviewer")
     assert action(client, poi, "approve").status_code == 403
@@ -115,7 +115,7 @@ def test_only_admin_can_confirm_review_and_publish(env):
 
 def test_same_wikidata_place_in_another_language_is_blocked_before_model(env, upstream):  # noqa: F811
     client, _, _ = env
-    login(client)
+    login(client, "admin")
     draft = client.post("/api/v1/admin/ai/wikipedia", json={"url": URL}).json()["draft"]
     assert client.post("/api/v1/admin/pois", json=draft).status_code == 201
     # Different name and article URL still represent the same Wikidata entity.
@@ -135,7 +135,7 @@ def test_database_identity_reservation_cannot_be_bypassed_by_another_writer(env)
     from app.duplicates import reserve_identities
 
     client, factory, _ = env
-    login(client)
+    login(client, "admin")
     create(client)
     with factory() as db:
         other = Poi(name="DIA DIEM THU NGHIEM", category_id="test-category", translations={})

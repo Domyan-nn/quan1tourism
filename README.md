@@ -1,6 +1,6 @@
 # Saigon Stories · Quận 1 Tourism
 
-Trang quản trị nội dung thuyết minh du lịch bằng **React + TypeScript**, kết nối **FastAPI + SQLAlchemy + Alembic**. Tiếng Việt mặc định, có giao diện tiếng Anh và cỡ chữ lớn. Bản triển khai này tập trung vào Giai đoạn 0–1 và yêu cầu **admin dễ dùng với mọi người**.
+Trang quản trị nội dung thuyết minh du lịch bằng **React + TypeScript**, kết nối **FastAPI + SQLAlchemy + Alembic**. Tiếng Việt mặc định, có giao diện tiếng Anh và cỡ chữ lớn. Bản triển khai có quản trị nội dung, bản đồ du khách và thống kê lượt xem/lượt nghe. Chi tiết: [bản đồ và thống kê](docs/MAPS-STATISTICS.md).
 
 ## Chạy local
 
@@ -91,11 +91,11 @@ Khi cập nhật từ bản cũ, dừng backend, sao lưu DB và chạy `uv run 
 2. **Thêm địa điểm:** nhập tên, danh mục, địa chỉ và ảnh. Tọa độ nằm trong phần nâng cao để biểu mẫu dễ đọc.
 3. **Nội dung đa ngôn ngữ:** chọn tab ngôn ngữ, nhập tiêu đề và bài thuyết minh. Có số ký tự và thời gian đọc ước tính. Tiếng Việt/Anh mặc định bắt buộc; các ngôn ngữ khác có thể bổ sung sau.
 4. **Nghe thử giọng đọc:** text-to-speech đọc trực tiếp văn bản bằng giọng trên thiết bị. Chọn giọng/tốc độ, tạm dừng, tiếp tục, dừng hoặc chọn vị trí đọc. Không tải lên hay lưu tệp audio mới.
-5. **Kiểm tra & gửi duyệt:** checklist kiểm tra các bản dịch bắt buộc và bản dịch tùy chọn đã bắt đầu nhập. Lưu nháp bất cứ lúc nào; không cần tệp audio để xuất bản.
-6. **Người duyệt:** mở nội dung chờ duyệt, nghe thử, yêu cầu sửa kèm lý do hoặc duyệt; sau đó xuất bản.
-7. **Du khách:** chỉ nhận bản đã xuất bản; đổi ngôn ngữ, nghe, tua, đổi tốc độ và đọc bài thuyết minh.
+5. **Kiểm tra & công bố:** chọn Nháp / Công bố / Ẩn rồi bấm **Lưu thay đổi**. Công bố yêu cầu đủ các bản dịch bắt buộc và các bản dịch tùy chọn đã bắt đầu nhập; không cần tệp audio.
+6. **Vị trí:** mở **Chỉnh sửa nâng cao**, tìm địa chỉ, nhấp bản đồ, kéo ghim hoặc nhập tọa độ. Khôi phục dùng lần lưu gần nhất; Hủy bỏ thay đổi chưa lưu. Chuyển bước/chọn ảnh không tự lưu.
+7. **Du khách:** đổi Danh sách/Bản đồ, chọn ghim để xem và nghe ngay trên bản đồ, hoặc mở trang chi tiết. Danh sách xếp theo lượt xem giảm dần; số lượt chỉ admin được xem.
 
-Biên tập viên không thể tự duyệt/xuất bản; backend kiểm tra quyền cho mọi thao tác. Khi sửa địa điểm đã xuất bản, du khách tiếp tục nhận văn bản của phiên bản cũ đến khi duyệt/xuất bản lại. Lưu trữ ẩn địa điểm; có thể mở lại thành nháp. Khôi phục phiên bản cũ tạo bản nháp mới và phải đi qua quy trình duyệt lại.
+Chỉ admin được thay đổi địa điểm, ảnh và trạng thái; editor/reviewer có thể đọc và xem trước. Backend kiểm tra quyền cho mọi thao tác. Chọn Nháp/Ẩn gỡ địa điểm khỏi công khai nhưng giữ lịch sử và thống kê. Xem trước/nghe thử của nhân sự không tăng lượt. Khi nâng cấp, chạy migration `0008` trước backend mới; xem [bản đồ và thống kê](docs/MAPS-STATISTICS.md).
 
 Trong **Ngôn ngữ & thuyết minh**, quản trị viên thêm/sửa mã ngôn ngữ, tên bản địa, mã giọng đọc, thứ tự, hướng chữ, trạng thái bật và yêu cầu bắt buộc. Có sẵn 15 lựa chọn: Việt, Anh, Trung giản thể/phồn thể, Nhật, Hàn, Pháp, Đức, Tây Ban Nha, Ý, Bồ Đào Nha, Nga, Thái, Indonesia, Ả Rập. Thêm ngôn ngữ mới không cần sửa mã nguồn hay migration. Tắt ngôn ngữ giữ lại văn bản. Giao diện quản trị/đăng nhập vẫn có tiếng Việt và tiếng Anh; danh sách này là ngôn ngữ nội dung thuyết minh.
 
@@ -129,4 +129,4 @@ Xem [báo cáo kiểm thử](docs/TEST-REPORT.md), [kiến trúc/API](docs/ARCHI
 
 ## Giới hạn hiện tại
 
-Luồng nội dung Giai đoạn 1 có backend thật và đã khởi tạo PostgreSQL 18 local. Chưa triển khai tour, Expo/mobile, quét QR, GPS, PWA/offline, đồng bộ tiến độ, worker Celery/Redis, S3, thống kê nghe và quản trị tài khoản. PostGIS chỉ được thêm khi máy chủ có extension; nhánh PostGIS chưa kiểm thử trên máy này. AI có thể bỏ sót hoặc suy diễn sai nên chỉ tạo bản nháp để duyệt. Chưa triển khai ra bên ngoài.
+Luồng nội dung Giai đoạn 1 có backend thật và đã khởi tạo PostgreSQL 18 local. Chưa triển khai tour, Expo/mobile, quét QR, GPS, PWA/offline, đồng bộ tiến độ, worker Celery/Redis, S3 và quản trị tài khoản. PostGIS chỉ được thêm khi máy chủ có extension; nhánh PostGIS chưa kiểm thử trên máy này. AI có thể bỏ sót hoặc suy diễn sai nên chỉ tạo bản nháp để duyệt. Thông tin triển khai xem hướng dẫn cloud ở đầu tài liệu.

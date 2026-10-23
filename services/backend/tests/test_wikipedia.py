@@ -175,7 +175,7 @@ def test_ai_requires_staff_and_does_not_fetch_for_visitors(env, upstream):
 
 def test_generate_review_save_and_publish_keep_sources(env, upstream):
     client, factory, _ = env
-    login(client)
+    login(client, "admin")
     assert client.get("/api/v1/admin/ai/status").json()["ready"]
     response = client.post("/api/v1/admin/ai/wikipedia", json={"url": URL, "language_codes": ["fr"]})
     assert response.status_code == 200, response.text
@@ -208,7 +208,7 @@ def test_generate_review_save_and_publish_keep_sources(env, upstream):
 
 def test_unknown_coordinates_and_image_stay_missing_and_bad_address_is_replaced_from_source(env, upstream):
     client, _, _ = env
-    login(client)
+    login(client, "admin")
     upstream.update(coordinates=False, image=False, bad_address=True)
     preview = client.post("/api/v1/admin/ai/wikipedia", json={"url": URL}).json()
     payload = preview["draft"]
@@ -225,7 +225,7 @@ def test_unknown_coordinates_and_image_stay_missing_and_bad_address_is_replaced_
 @pytest.mark.parametrize("failure", ["bad_json", "truncated"])
 def test_bad_ai_response_never_creates_a_poi(env, upstream, failure):
     client, factory, _ = env
-    login(client)
+    login(client, "admin")
     upstream[failure] = True
     assert client.post("/api/v1/admin/ai/wikipedia", json={"url": URL}).status_code == 502
     with factory() as db:
@@ -234,7 +234,7 @@ def test_bad_ai_response_never_creates_a_poi(env, upstream, failure):
 
 def test_disabled_or_unknown_languages_are_rejected_before_fetch(env, upstream):
     client, _, _ = env
-    login(client)
+    login(client, "admin")
     assert (
         client.post("/api/v1/admin/ai/wikipedia", json={"url": URL, "language_codes": ["xx"]}).status_code
         == 422

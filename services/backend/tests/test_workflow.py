@@ -58,7 +58,9 @@ def ready(client):
 
 
 def publish(client, poi):
-    assert action(client, poi, "publish").status_code == 403  # editor cannot bypass review
+    login(client, "editor")
+    assert action(client, poi, "publish").status_code == 403
+    login(client, "admin")
     poi = action(client, poi, "submit").json()
     login(client, "admin")
     poi = action(client, poi, "approve").json()
@@ -70,7 +72,7 @@ def publish(client, poi):
 def test_anonymous_cannot_read_drafts_or_private_media(env):
     client, _, _ = env
     assert client.get("/api/v1/admin/pois").status_code == 401
-    login(client)
+    login(client, "admin")
     poi = upload(client, create(client))
     image_id = poi["image_id"]
     assert client.get(f"/api/v1/media/{image_id}").status_code == 200
@@ -84,7 +86,7 @@ def test_full_bilingual_workflow_needs_only_text(env):
     from app.models import Media, PoiTranslation
 
     client, factory, directory = env
-    login(client)
+    login(client, "admin")
     poi = publish(client, ready(client))
     client.post("/api/v1/auth/logout")
     for locale in ("vi", "en"):
@@ -102,7 +104,7 @@ def test_full_bilingual_workflow_needs_only_text(env):
 
 def test_required_languages_and_text_edits_need_no_audio(env):
     client, _, _ = env
-    login(client)
+    login(client, "admin")
     payload = draft_payload()
     payload["translations"]["en"]["text"] = ""
     poi = client.post("/api/v1/admin/pois", json=payload).json()
@@ -115,9 +117,9 @@ def test_required_languages_and_text_edits_need_no_audio(env):
     assert action(client, poi, "submit").status_code == 200
 
 
-def test_live_release_is_immutable_while_new_draft_is_edited(env):
+def test_saving_draft_hides_place_and_preserves_release_history(env):
     client, factory, _ = env
-    login(client)
+    login(client, "admin")
     poi = publish(client, ready(client))
     old_public = client.get(f"/api/v1/pois/{poi['id']}").json()
     payload = draft_payload()
@@ -125,14 +127,14 @@ def test_live_release_is_immutable_while_new_draft_is_edited(env):
     changed = client.put(f"/api/v1/admin/pois/{poi['id']}", json=payload)
     assert changed.status_code == 200
     assert changed.json()["status"] == "draft"
-    assert client.get(f"/api/v1/pois/{poi['id']}").json() == old_public
+    assert client.get(f"/api/v1/pois/{poi['id']}").status_code == 404
     with factory() as db:
         assert db.scalar(select(Release)).snapshot == old_public
 
 
-def test_stale_editor_cannot_overwrite_newer_revision(env):
+def test_stale_admin_cannot_overwrite_newer_revision(env):
     client, _, _ = env
-    login(client)
+    login(client, "admin")
     poi = create(client)
     payload = draft_payload() | {"revision": poi["revision"]}
     assert client.put(f"/api/v1/admin/pois/{poi['id']}", json=payload).status_code == 200
@@ -142,7 +144,7 @@ def test_stale_editor_cannot_overwrite_newer_revision(env):
 
 def test_review_locks_edits_and_rejection_requires_reason(env):
     client, _, _ = env
-    login(client)
+    login(client, "admin")
     poi = action(client, ready(client), "submit").json()
     assert (
         client.put(
@@ -150,8 +152,11 @@ def test_review_locks_edits_and_rejection_requires_reason(env):
         ).status_code
         == 409
     )
+    login(client, "editor")
     assert action(client, poi, "approve").status_code == 403
     login(client, "reviewer")
+    assert action(client, poi, "reject").status_code == 403
+    login(client, "admin")
     assert action(client, poi, "reject").status_code == 422
     rejected = action(client, poi, "reject", note="Kiểm tra lại nội dung.")
     assert rejected.status_code == 200
@@ -161,7 +166,7 @@ def test_review_locks_edits_and_rejection_requires_reason(env):
 
 def test_malformed_and_mislabelled_uploads_are_rejected(env):
     client, _, directory = env
-    login(client)
+    login(client, "admin")
     poi = create(client)
     url = f"/api/v1/admin/pois/{poi['id']}/upload?kind=audio&revision={poi['revision']}"
     assert client.post(url, files={"file": ("fake.mp3", b"not audio", "audio/mpeg")}).status_code == 422
@@ -184,7 +189,7 @@ def test_malformed_and_mislabelled_uploads_are_rejected(env):
 
 def test_logout_revokes_session_and_csrf_header_is_required(env):
     client, _, _ = env
-    login(client)
+    login(client, "admin")
     assert client.get("/api/v1/auth/me").status_code == 200
     assert client.post("/api/v1/auth/logout").status_code == 204
     assert client.get("/api/v1/auth/me").status_code == 401
@@ -199,7 +204,7 @@ def test_logout_revokes_session_and_csrf_header_is_required(env):
 
 def test_archive_hides_public_place_and_can_restore_new_draft(env):
     client, _, _ = env
-    login(client)
+    login(client, "admin")
     poi = publish(client, ready(client))
     poi = action(client, poi, "archive").json()
     assert client.get(f"/api/v1/pois/{poi['id']}").status_code == 404
@@ -214,7 +219,7 @@ def test_archive_hides_public_place_and_can_restore_new_draft(env):
 
 def test_accent_insensitive_search_and_pagination(env):
     client, _, _ = env
-    login(client)
+    login(client, "admin")
     create(client)
     response = client.get("/api/v1/admin/pois?q=dia+diem&page_size=1")
     assert response.json()["total"] == 1
@@ -225,8 +230,9 @@ def test_accent_insensitive_search_and_pagination(env):
 
 def test_category_delete_requires_admin_and_empty_category(env):
     client, _, _ = env
-    login(client)
+    login(client, "editor")
     assert client.delete("/api/v1/admin/categories/test-category").status_code == 403
+    login(client, "admin")
     create(client)
     login(client, "admin")
     assert client.delete("/api/v1/admin/categories/test-category").status_code == 409
@@ -236,7 +242,7 @@ def test_category_delete_requires_admin_and_empty_category(env):
 
 def test_cannot_restore_another_places_release(env):
     client, _, _ = env
-    login(client)
+    login(client, "admin")
     poi = publish(client, ready(client))
     history = client.get(f"/api/v1/admin/pois/{poi['id']}/history").json()
     another = client.post("/api/v1/admin/pois", json=draft_payload() | {"name": "Một địa điểm khác"}).json()

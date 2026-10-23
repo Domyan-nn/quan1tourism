@@ -18,7 +18,7 @@ def load_local_environment():
             key, value = key.strip(), value.strip()
             if key in {
                 "DATABASE_URL", "MEDIA_ROOT", "COOKIE_SECURE", "OLLAMA_BASE_URL", "OLLAMA_MODEL",
-                "APP_ENV", "AI_MODE", "AI_WORKER_TOKEN", "AI_SERVER_URL", "STATIC_ROOT",
+                "APP_ENV", "AI_MODE", "AI_WORKER_TOKEN", "AI_SERVER_URL", "STATIC_ROOT", "GEOCODING_URL",
             }:
                 if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
                     value = value[1:-1]

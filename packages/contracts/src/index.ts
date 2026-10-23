@@ -66,6 +66,9 @@ export interface Poi {
   id: string;
   name: string;
   address: string;
+  short_description?: string;
+  view_count?: number;
+  listen_count?: number;
   category_id: string;
   latitude: number | null;
   longitude: number | null;

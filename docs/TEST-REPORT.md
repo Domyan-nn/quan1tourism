@@ -1,5 +1,16 @@
 # Báo cáo kiểm thử thực tế
 
+## Cập nhật 23/10/2026: Bản đồ, vị trí và thống kê
+
+- Backend: **69/69 đạt** (41,29 giây), gồm chống lặp đúng ranh giới 30 phút, phiên khách/du khách đăng nhập, lượt xem/nghe độc lập, đồng thời cùng phiên/khác phiên, phân quyền admin, tọa độ, trạng thái và API không lộ bộ đếm.
+- Migration SQLite mới/nâng cấp dữ liệu cũ, Unicode, tài khoản, phiên, media và snapshot lịch sử: đạt trong bộ backend. PostgreSQL/Supabase có nhánh upsert và RLS; chưa chạy migration `0008` trên database cloud trong lần sửa này.
+- TypeScript, build admin/web, Ruff và `git diff --check`: đạt.
+- Bộ Playwright đầy đủ hiện có **28/28 đạt** (1,6 phút). Sau sửa tương thích trạng thái cũ, chạy lại riêng bản đồ **6/6 đạt** (32,6 giây), gồm hai ca mới cho trạng thái chờ duyệt trên desktop/mobile; tổng cộng 30 kịch bản riêng biệt đã được xác minh.
+- Trình duyệt kiểm tra nhấp/kéo ghim, tìm vị trí, khôi phục/hủy, ảnh chỉ tải khi lưu, tọa độ/ảnh tồn tại khi mở lại, preview không ghi lượt, nghe trên bản đồ, đổi ngôn ngữ/địa điểm và thẻ→chi tiết không đếm lặp.
+- TTS dùng mock có sự kiện `onstart` để xác nhận chỉ đếm khi bắt đầu đọc thành công; không đánh giá chất lượng giọng thật. Kết quả tìm vị trí dùng mock; bộ backend kiểm tra parse/cache/giới hạn/lỗi dịch vụ Photon. Ảnh chụp tại `.runtime/screenshots/location-editor-*.png` và `visitor-map-*.png`.
+- Chưa cập nhật Render/Cloudflare hoặc database cloud. [Hướng dẫn migration và sử dụng](MAPS-STATISTICS.md).
+
+
 ## Cập nhật 23/10/2026: Supabase và Ollama qua hàng đợi HTTPS
 
 - Backend: **60 kiểm thử đạt**, gồm job bền vững, quyền worker/admin, lease hết hạn, nhận lại việc,

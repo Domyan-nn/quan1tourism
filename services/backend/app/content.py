@@ -12,7 +12,7 @@ def iso(value):
     return value.isoformat() + ("Z" if value.tzinfo is None else "")
 
 
-def serialize(poi: Poi, db: Session):
+def serialize(poi: Poi, db: Session, *, statistics=False):
     translations = {}
     values = poi.translations
     for language in languages(db):
@@ -27,6 +27,8 @@ def serialize(poi: Poi, db: Session):
         "id": poi.id,
         "name": poi.name,
         "address": poi.address,
+        "short_description": poi.short_description,
+        **({"view_count": poi.view_count, "listen_count": poi.listen_count} if statistics else {}),
         "category_id": poi.category_id,
         "latitude": poi.latitude,
         "longitude": poi.longitude,
@@ -81,6 +83,8 @@ def ready(poi: Poi, db: Session):
 def text_snapshot(snapshot):
     """Expose narration text for both new and historical releases, never legacy audio links."""
     result = copy.deepcopy(snapshot)
+    result.pop("view_count", None)
+    result.pop("listen_count", None)
     result["translations"] = {
         code: {
             "title": tr.get("title", ""),
@@ -137,6 +141,7 @@ def transition(db: Session, poi: Poi, user: User, data):
             ):
                 setattr(poi, field, copy.deepcopy(snapshot[field]))
             poi.source = copy.deepcopy(snapshot.get("source"))
+            poi.short_description = snapshot.get("short_description", "")
             reserve_identities(db, poi)
         poi.status = "draft"
     else:

@@ -615,5 +615,111 @@ button:disabled {
     font-size: 1.1rem;
   }
 }
-.language select { border: 0; background: transparent; color: inherit; max-width: 160px; min-width: 0; }
-.player .speech-player { display: block; }
+.language select {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  max-width: 160px;
+  min-width: 0;
+}
+.player .speech-player {
+  display: block;
+}
+.map-view-toggle {
+  display: flex;
+  gap: 6px;
+  margin: 0 0 20px;
+}
+.map-view-toggle button {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 16px;
+  border: 1px solid #c6d6bc;
+  border-radius: 8px;
+  background: #fff;
+  color: #355740;
+}
+.map-view-toggle button[aria-pressed="true"] {
+  color: white;
+  background: #355740;
+}
+.map-explorer {
+  position: relative;
+}
+.map-explorer .place-map {
+  height: 640px;
+}
+.map-card {
+  position: absolute;
+  z-index: 1;
+  top: 16px;
+  right: 16px;
+  width: min(350px, calc(100% - 70px));
+  max-height: 605px;
+  overflow: auto;
+  background: #fffef9;
+  border: 1px solid #c6d6bc;
+  border-radius: 12px;
+  padding: 18px;
+  box-shadow: 0 8px 24px #29473526;
+}
+.map-card h3 {
+  padding-right: 24px;
+  margin: 14px 0 8px;
+}
+.map-card-close {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid #c6d6bc;
+  border-radius: 50%;
+  background: white;
+  color: #294735;
+}
+.map-card-image,
+.map-card-placeholder {
+  width: 100%;
+  height: 115px;
+  object-fit: cover;
+  border-radius: 8px;
+}
+.map-card-placeholder {
+  display: grid;
+  place-items: center;
+  background: #e6eddc;
+}
+.map-description,
+.map-hint {
+  font-size: 12px;
+  line-height: 1.8;
+}
+.map-language {
+  display: grid;
+  gap: 8px;
+  margin: 15px 0;
+  font-size: 12px;
+}
+.map-language select {
+  padding: 8px;
+  border: 1px solid #c6d6bc;
+  border-radius: 6px;
+  color: #294735;
+  background: #fff;
+}
+.place .place-description {
+  margin-top: 12px;
+  color: #526943;
+}
+@media (max-width: 500px) {
+  .map-card {
+    top: 62px;
+    right: 10px;
+    width: calc(100% - 20px);
+    max-height: 565px;
+  }
+}

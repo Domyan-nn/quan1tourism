@@ -36,7 +36,7 @@ erDiagram
 
 Migration `0003` thay `pois.translations` JSON bằng `poi_translations`, khóa chính `(poi_id, locale)` và khóa ngoại tới `pois`/`languages`. Tiêu đề và bài thuyết minh là văn bản; không tạo/lưu audio mới. `languages` lưu danh sách mở rộng, tên bản địa, mã giọng đọc, bật/tắt, bắt buộc, thứ tự và hướng chữ. Có sẵn 15 lựa chọn, Việt/Anh bắt buộc mặc định. Revision của POI dùng optimistic concurrency ở cả API và SQLAlchemy, trả 409 khi một phiên cố ghi đè phiên khác. [Chi tiết DB](DATABASE.md).
 
-`content_releases.snapshot` là bản chụp văn bản/metadata/media bất biến. `is_current` chỉ là con trỏ phát hành có thể thay đổi; snapshot không bị sửa. Khi biên tập bản đang phát hành, `pois` chuyển về draft nhưng bản phát hành vẫn tồn tại. Khi xuất bản lại, con trỏ được chuyển trong cùng transaction. Lưu trữ gỡ con trỏ; snapshot và media được giữ lại. Khôi phục sao chép vào draft mới với revision tăng.
+`content_releases.snapshot` là bản chụp văn bản/metadata/media bất biến. `is_current` chỉ là con trỏ phát hành có thể thay đổi; snapshot không bị sửa. Khi lưu về Nháp/Ẩn, địa điểm ngừng công khai; snapshot lịch sử vẫn tồn tại. Khi xuất bản lại, con trỏ được chuyển trong cùng transaction. Lưu trữ gỡ con trỏ; snapshot và media được giữ lại. Khôi phục sao chép vào draft mới với revision tăng.
 
 Role hiện là một cột có constraint trong users; chưa triển khai đa vai trò `roles/user_roles`. Khóa ngoại, unique email, unique danh mục, unique `(poi_id, revision)`, constraint trạng thái/tọa độ và index đã có. Khi máy chủ có PostGIS, migration thêm cột geography sinh từ longitude/latitude và GIST index; PostgreSQL không có PostGIS và SQLite dùng hai số thực hoặc cặp NULL, chưa cung cấp nearby query.
 
@@ -58,9 +58,11 @@ Tiền tố `/api/v1`, schema thực tế tại `/docs`.
 | Danh mục | `GET/POST /admin/categories`, `DELETE /admin/categories/{id}` (chỉ danh mục trống, admin) |
 | Tổng quan | `GET /admin/summary` |
 | Du khách | `GET /pois`, `GET /pois/{id}?locale=vi` |
+| Thống kê du khách | `POST /pois/{id}/events/view`, `POST /pois/{id}/events/listen`; không trả số tổng |
+| Tìm vị trí (admin) | `GET /admin/map-search?q=...` |
 | Tệp | `GET /media/{id}`; nháp yêu cầu phiên editor/reviewer/admin, đã phát hành cho phép guest |
 
-Tham số list admin: `q`, `status`, `category`, `sort=updated|name`, `page`, `page_size` (1–100). Tìm không dấu bằng Unicode normalization; hiện tải các POI phù hợp trước khi lọc tên trong Python, phù hợp phạm vi 10–20 mẫu nhưng cần chuyển sang truy vấn index/search khi mở rộng. Màn hình bản dịch lấy tối đa 100 POI, chưa có phân trang riêng.
+Tham số list admin: `q`, `status`, `category`, `sort=views|updated|name (mặc định views)`, `page`, `page_size` (1–100). Tìm không dấu bằng Unicode normalization; hiện tải các POI phù hợp trước khi lọc tên trong Python, phù hợp phạm vi 10–20 mẫu nhưng cần chuyển sang truy vấn index/search khi mở rộng. Màn hình bản dịch lấy tối đa 100 POI, chưa có phân trang riêng.
 
 Lỗi dạng `{ "detail": "thông báo" }`, header `X-Request-ID`, không echo input nhạy cảm trong lỗi validation. Các thao tác ghi yêu cầu header `X-Requested-With: Quan1Admin`; browser HTTP client dùng same-origin proxy. Không mở CORS tùy ý. Cookie HttpOnly/SameSite Strict, 8 giờ; token ngẫu nhiên chỉ lưu hash phía server. Logout thu hồi phiên. Rate limit login trong bộ nhớ một process; cần kho chia sẻ khi triển khai nhiều worker.
 
@@ -82,3 +84,7 @@ Tour/tour_stops, Expo, GPS engine, offline manifest/checksum/staging/atomic acti
 - [FastAPI: Request Files](https://fastapi.tiangolo.com/tutorial/request-files/) — multipart và UploadFile.
 - [SQLAlchemy ORM Quick Start](https://docs.sqlalchemy.org/en/20/orm/quickstart.html) — mapped models, sessions, transactions.
 - [Appmuseus](https://github.com/humbertblanco/appmuseus) — tham khảo phạm vi audioguide/CMS/đa ngôn ngữ; không sao chép mã hay tài sản. Repo công bố MIT, nhưng không đưa mã từ repo vào dự án này. Các repo gợi ý khác chưa được đánh giá chi tiết.
+
+## Bản đồ và lượt truy cập
+
+`PlaceMap` dùng Leaflet chung cho admin/du khách. `app/engagement.py` ghi nhận lượt qua cookie phiên HttpOnly; upsert có điều kiện và phép tăng SQL nằm cùng transaction. Bộ đếm không sửa revision nội dung và không có trong release snapshot. Chỉ admin nhận số liệu qua API quản trị và thực hiện các thao tác ghi địa điểm. Chi tiết cấu hình, quy tắc và kiểm thử tại [MAPS-STATISTICS.md](MAPS-STATISTICS.md).

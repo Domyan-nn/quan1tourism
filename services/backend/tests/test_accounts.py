@@ -111,7 +111,7 @@ def test_invalid_registration_creates_no_user(env, changes):
 
 def test_visitor_cannot_access_admin_drafts_or_private_media(env):
     client, _, _ = env
-    login(client)
+    login(client, "admin")
     draft = upload(client, create(client))
     public = publish(client, upload(client, create(client, "Địa điểm công khai khác")))
     assert client.post("/api/v1/auth/register", json=payload()).status_code == 201

@@ -12,15 +12,17 @@ import {
   Headphones,
   History,
   ImagePlus,
-  LoaderCircle,
   MapPin,
   RotateCcw,
   Save,
-  Send,
   ShieldCheck,
-  Volume2,
 } from "lucide-react";
-import { api, SourceAttribution, SpeechPlayer } from "@quan1/api-client";
+import {
+  api,
+  SourceAttribution,
+  SpeechPlayer,
+  LocationEditor,
+} from "@quan1/api-client";
 import type {
   Audit,
   Category,
@@ -36,6 +38,7 @@ import { WikipediaImport } from "./WikipediaImport";
 
 type Props = {
   initial: Poi | "new";
+  initialPreview?: boolean;
   categories: Category[];
   languages: Language[];
   user: User;
@@ -47,6 +50,10 @@ type HistoryData = { events: Audit[]; releases: Release[] };
 const inputData = (p: Poi) => ({
   name: p.name,
   address: p.address,
+  short_description: p.short_description ?? "",
+  status: ["draft", "published", "archived"].includes(p.status)
+    ? p.status
+    : "draft",
   category_id: p.category_id,
   latitude: p.latitude,
   longitude: p.longitude,
@@ -62,6 +69,7 @@ const inputData = (p: Poi) => ({
 
 export function Editor({
   initial,
+  initialPreview = false,
   categories,
   languages,
   user,
@@ -97,6 +105,8 @@ export function Editor({
           is_demo: false,
         }
       : initial;
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState("");
   const [saved, setSaved] = useState(initialPoi);
   const [form, setForm] = useState(initialPoi);
   const [step, setStep] = useState(
@@ -109,17 +119,21 @@ export function Editor({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [feedback, setFeedback] = useState("");
-  const [preview, setPreview] = useState(false);
+  const [preview, setPreview] = useState(initialPreview);
   const [history, setHistory] = useState<HistoryData | null>(null);
   const [historyError, setHistoryError] = useState("");
   const [confirm, setConfirm] = useState<"archive" | "reject" | null>(null);
   const [note, setNote] = useState("");
   const [confirmedReview, setConfirmedReview] = useState(false);
-  const [duplicates, setDuplicates] = useState<{id: string; name: string; address: string}[]>([]);
+  const [duplicates, setDuplicates] = useState<
+    { id: string; name: string; address: string }[]
+  >([]);
   const fileRef = useRef<HTMLInputElement>(null);
   const dirty =
+    !!imageFile ||
+    form.status !== saved.status ||
     JSON.stringify(inputData(form)) !== JSON.stringify(inputData(saved));
-  const locked = ["in_review", "archived"].includes(saved.status);
+  const locked = user.role !== "admin";
   const reviewer = user.role === "reviewer" || user.role === "admin";
   const administrator = user.role === "admin";
   const enabledLanguages = languages.filter((language) => language.enabled);
@@ -164,6 +178,15 @@ export function Editor({
   ];
 
   useEffect(() => {
+    if (!imageFile) {
+      setImagePreview("");
+      return;
+    }
+    const url = URL.createObjectURL(imageFile);
+    setImagePreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [imageFile]);
+  useEffect(() => {
     setConfirmedReview(false);
   }, [saved.id, saved.revision]);
   useEffect(() => {
@@ -173,12 +196,22 @@ export function Editor({
     }
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
-      api<{items: typeof duplicates}>("/admin/pois/check-duplicates", {
-        method: "POST", body: JSON.stringify(inputData(form)), signal: controller.signal,
-      }).then((result) => { if (!controller.signal.aborted) setDuplicates(result.items); })
-        .catch(() => { /* Saving always checks again on the server. */ });
+      api<{ items: typeof duplicates }>("/admin/pois/check-duplicates", {
+        method: "POST",
+        body: JSON.stringify(inputData(form)),
+        signal: controller.signal,
+      })
+        .then((result) => {
+          if (!controller.signal.aborted) setDuplicates(result.items);
+        })
+        .catch(() => {
+          /* Saving always checks again on the server. */
+        });
     }, 400);
-    return () => { window.clearTimeout(timer); controller.abort(); };
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
   }, [saved.id, form.name, form.source]);
   useEffect(() => {
     const before = (e: BeforeUnloadEvent) => {
@@ -245,20 +278,45 @@ export function Editor({
     onSaved(vi ? "Đã lưu nội dung." : "Content saved.");
   }
   async function persist(): Promise<Poi> {
-    if (!form.name.trim() || !form.category_id)
+    if (!form.name.trim() || !form.address.trim() || !form.category_id)
       throw new Error(
         vi
-          ? "Hãy nhập tên địa điểm và chọn danh mục trước."
-          : "Enter the place name and choose a category first.",
+          ? "Hãy nhập tên, địa chỉ và chọn danh mục trước."
+          : "Enter the place name, address and category first.",
       );
     if (!dirty && saved.id) return saved;
-    const p = await api<Poi>(
+    let p = await api<Poi>(
       saved.id ? `/admin/pois/${saved.id}` : "/admin/pois",
       {
         method: saved.id ? "PUT" : "POST",
-        body: JSON.stringify(inputData(form)),
+        body: JSON.stringify({
+          ...inputData(form),
+          ...(imageFile ? { status: "draft" } : {}),
+        }),
       },
     );
+    if (imageFile) {
+      setSaved(p);
+      setForm((current) => ({ ...current, id: p.id, revision: p.revision }));
+      const body = new FormData();
+      body.append("file", imageFile);
+      p = await api<Poi>(
+        `/admin/pois/${p.id}/upload?kind=image&revision=${p.revision}`,
+        { method: "POST", body },
+      );
+      setSaved(p);
+      setForm((current) => ({
+        ...current,
+        id: p.id,
+        revision: p.revision,
+        image_id: p.image_id,
+      }));
+      p = await api<Poi>(`/admin/pois/${p.id}`, {
+        method: "PUT",
+        body: JSON.stringify({ ...inputData(form), revision: p.revision }),
+      });
+      setImageFile(null);
+    }
     accept(p);
     return p;
   }
@@ -268,11 +326,7 @@ export function Editor({
     setFeedback("");
     try {
       await persist();
-      setFeedback(
-        vi
-          ? "Đã lưu bản nháp. Bạn có thể tiếp tục sau."
-          : "Draft saved. You can continue later.",
-      );
+      setFeedback(vi ? "Đã lưu thay đổi." : "Changes saved.");
       if (next !== undefined) setStep(next);
     } catch (e) {
       setError((e as Error).message);
@@ -281,38 +335,28 @@ export function Editor({
     }
   }
   async function move(n: number) {
-    if (busy) return;
-    if (n <= step || locked) {
-      setStep(n);
+    if (!busy) setStep(n);
+  }
+  function upload(file: File | undefined, _kind: "image") {
+    if (!file) return;
+    setError("");
+    if (
+      !["image/jpeg", "image/png", "image/webp"].includes(file.type) ||
+      file.size > 10 * 1024 * 1024
+    ) {
+      setError(
+        vi
+          ? "Chọn JPG, PNG hoặc WebP, tối đa 10 MB."
+          : "Choose JPG, PNG or WebP up to 10 MB.",
+      );
       return;
     }
-    await save(n);
-  }
-  async function upload(file: File | undefined, kind: "image") {
-    if (!file) return;
-    setBusy(true);
-    setError("");
-    setFeedback("");
-    try {
-      const p = await persist();
-      const body = new FormData();
-      body.append("file", file);
-      const result = await api<Poi>(
-        `/admin/pois/${p.id}/upload?kind=${kind}&revision=${p.revision}`,
-        { method: "POST", body },
-      );
-      accept(result);
-      setFeedback(
-        vi
-          ? "Đã tải ảnh. Hãy kiểm tra trước khi gửi duyệt."
-          : "File uploaded. Check it before submitting for review.",
-      );
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-      if (fileRef.current) fileRef.current.value = "";
-    }
+    setImageFile(file);
+    setFeedback(
+      vi
+        ? "Ảnh sẽ được tải lên khi lưu thay đổi."
+        : "The image will upload when you save changes.",
+    );
   }
   async function action(type: string, releaseId?: string) {
     setBusy(true);
@@ -379,7 +423,7 @@ export function Editor({
   return (
     <Dialog
       wide
-      title={saved.id ? (vi ? "Biên tập địa điểm" : "Edit place") : t.add}
+      title={saved.id ? (vi ? "Chỉnh sửa địa điểm" : "Edit place") : t.add}
       onClose={close}
     >
       <div className="editor-layout">
@@ -457,9 +501,19 @@ export function Editor({
             )}
             {duplicates.length > 0 && (
               <div className="notice error" role="alert">
-                <strong>{vi ? "Địa điểm đã tồn tại" : "Place already exists"}</strong>
-                {duplicates.map((item) => <p key={item.id}>{item.name} · {item.address}</p>)}
-                <p>{vi ? "Đóng biểu mẫu và mở địa điểm hiện có để kiểm tra, chỉnh sửa." : "Close this form and open the existing place to review or edit it."}</p>
+                <strong>
+                  {vi ? "Địa điểm đã tồn tại" : "Place already exists"}
+                </strong>
+                {duplicates.map((item) => (
+                  <p key={item.id}>
+                    {item.name} · {item.address}
+                  </p>
+                ))}
+                <p>
+                  {vi
+                    ? "Đóng biểu mẫu và mở địa điểm hiện có để kiểm tra, chỉnh sửa."
+                    : "Close this form and open the existing place to review or edit it."}
+                </p>
               </div>
             )}
             {error && (
@@ -566,6 +620,7 @@ export function Editor({
                 <label className="field-label">
                   {vi ? "Địa chỉ" : "Address"}
                   <input
+                    required
                     className="input"
                     value={form.address}
                     maxLength={300}
@@ -575,10 +630,30 @@ export function Editor({
                     }
                   />
                 </label>
+                <label className="field-label">
+                  {vi ? "Mô tả ngắn" : "Short description"}
+                  <textarea
+                    className="input"
+                    rows={3}
+                    maxLength={2000}
+                    value={form.short_description ?? ""}
+                    onChange={(event) =>
+                      update("short_description", event.target.value)
+                    }
+                  />
+                </label>
                 <div className="field-label">
                   {vi ? "Ảnh đại diện" : "Cover image"}
                   <div className="image-upload">
-                    <Cover poi={form} />
+                    {imagePreview ? (
+                      <img
+                        className="staged-image"
+                        src={imagePreview}
+                        alt={form.name}
+                      />
+                    ) : (
+                      <Cover poi={form} />
+                    )}
                     <div>
                       <label className="button secondary upload-label">
                         <ImagePlus size={16} />
@@ -604,58 +679,50 @@ export function Editor({
                     </div>
                   </div>
                 </div>
-                <details className="location-details">
-                  <summary>
-                    <MapPin size={16} />
-                    {vi ? "Vị trí trên bản đồ" : "Map coordinates"}
-                    <small>{vi ? "Tùy chọn nâng cao" : "Advanced"}</small>
-                  </summary>
-                  <p className="field-hint">
-                    {vi
-                      ? "Nhập tọa độ chính xác để hỗ trợ định vị ở giai đoạn tiếp theo."
-                      : "Enter accurate coordinates for location features in a later phase."}
-                  </p>
-                  <div className="two-fields">
-                    <label className="field-label">
-                      {vi ? "Vĩ độ" : "Latitude"}
-                      <input
-                        className="input"
-                        type="number"
-                        min={-90}
-                        max={90}
-                        step="any"
-                        value={form.latitude ?? ""}
-                        onChange={(e) =>
-                          update(
-                            "latitude",
-                            e.target.value === ""
-                              ? null
-                              : Number(e.target.value),
-                          )
-                        }
-                      />
-                    </label>
-                    <label className="field-label">
-                      {vi ? "Kinh độ" : "Longitude"}
-                      <input
-                        className="input"
-                        type="number"
-                        min={-180}
-                        max={180}
-                        step="any"
-                        value={form.longitude ?? ""}
-                        onChange={(e) =>
-                          update(
-                            "longitude",
-                            e.target.value === ""
-                              ? null
-                              : Number(e.target.value),
-                          )
-                        }
-                      />
-                    </label>
+                <label className="field-label">
+                  {vi ? "Trạng thái hiển thị" : "Visibility"}
+                  <select
+                    className="input"
+                    aria-label={vi ? "Trạng thái hiển thị" : "Visibility"}
+                    value={form.status}
+                    onChange={(event) => update("status", event.target.value)}
+                  >
+                    {["in_review", "approved"].includes(form.status) && (
+                      <option value={form.status} disabled>
+                        {form.status === "in_review" ? t.waiting : t.approved}
+                      </option>
+                    )}
+                    <option value="draft">{vi ? "Nháp" : "Draft"}</option>
+                    <option value="published">
+                      {vi ? "Công bố" : "Published"}
+                    </option>
+                    <option value="archived">{vi ? "Ẩn" : "Hidden"}</option>
+                  </select>
+                </label>
+                <LocationEditor
+                  value={form}
+                  saved={saved}
+                  vi={vi}
+                  disabled={busy || locked}
+                  onChange={(point) =>
+                    setForm((current) => ({ ...current, ...point }))
+                  }
+                />
+                {administrator && saved.id && (
+                  <div
+                    className="place-statistics"
+                    aria-label={vi ? "Thống kê địa điểm" : "Place statistics"}
+                  >
+                    <span>
+                      {vi ? "Tổng lượt xem" : "Total views"}:{" "}
+                      <strong>{saved.view_count ?? 0}</strong>
+                    </span>
+                    <span>
+                      {vi ? "Lượt bắt đầu nghe" : "Listening starts"}:{" "}
+                      <strong>{saved.listen_count ?? 0}</strong>
+                    </span>
                   </div>
-                </details>
+                )}
               </fieldset>
             )}
             {step === 1 && (
@@ -819,11 +886,11 @@ export function Editor({
                     <p>
                       {ready
                         ? vi
-                          ? "Hãy xem trước và gửi nội dung cho người duyệt."
-                          : "Preview the place and submit it for review."
+                          ? "Hãy xem trước, chọn Công bố ở bước 1 và lưu thay đổi."
+                          : "Preview the place, select Published in step 1 and save changes."
                         : vi
-                          ? "Hoàn thành các mục bên dưới trước khi gửi duyệt."
-                          : "Complete the items below before submitting."}
+                          ? "Hoàn thành các mục bên dưới trước khi công bố."
+                          : "Complete the items below before publishing."}
                     </p>
                   </div>
                 </div>
@@ -991,33 +1058,33 @@ export function Editor({
           </div>
           <footer className="editor-footer">
             <span className="save-state">
-              {busy ? (
-                <>
-                  <LoaderCircle className="spin" size={15} />
-                  {t.saving}
-                </>
-              ) : dirty ? (
-                <>
-                  <span className="unsaved-dot" />
-                  {vi ? "Có thay đổi chưa lưu" : "Unsaved changes"}
-                </>
-              ) : (
-                <>
-                  <Check size={15} />
-                  {saved.id
-                    ? vi
-                      ? "Đã lưu"
-                      : "Saved"
-                    : vi
-                      ? "Bản nháp mới"
-                      : "New draft"}
-                </>
-              )}
+              {dirty
+                ? vi
+                  ? "Có thay đổi chưa lưu"
+                  : "Unsaved changes"
+                : vi
+                  ? "Đã lưu"
+                  : "Saved"}
             </span>
             <div>
+              <button
+                className="button secondary"
+                disabled={busy}
+                onClick={close}
+              >
+                {t.cancel}
+              </button>
+              <button
+                className="button secondary"
+                disabled={busy}
+                onClick={() => setPreview(true)}
+              >
+                <Eye size={16} />
+                {vi ? "Xem trước" : "Preview"}
+              </button>
               {step > 0 && (
                 <button
-                  className="button secondary back-button"
+                  className="button secondary"
                   disabled={busy}
                   onClick={() => setStep(step - 1)}
                 >
@@ -1025,75 +1092,24 @@ export function Editor({
                   {vi ? "Quay lại" : "Back"}
                 </button>
               )}
-              {!locked && (
+              {step < 3 && (
                 <button
                   className="button secondary"
+                  disabled={busy}
+                  onClick={() => setStep(step + 1)}
+                >
+                  {vi ? "Tiếp tục" : "Continue"}
+                  <ArrowRight size={16} />
+                </button>
+              )}
+              {!locked && (
+                <button
+                  className="button primary"
                   disabled={busy || (!dirty && !!saved.id)}
                   onClick={() => save()}
                 >
                   <Save size={16} />
-                  {t.save}
-                </button>
-              )}
-              {step < 3 ? (
-                <button
-                  className="button primary"
-                  disabled={busy}
-                  onClick={() => (locked ? setStep(step + 1) : save(step + 1))}
-                >
-                  {locked ? (vi ? "Tiếp tục" : "Continue") : t.continue}
-                  <ArrowRight size={16} />
-                </button>
-              ) : saved.status === "draft" ? (
-                <button
-                  className="button primary"
-                  disabled={busy || !ready}
-                  onClick={() => action("submit")}
-                >
-                  <Send size={16} />
-                  {vi ? "Gửi duyệt" : "Submit for review"}
-                </button>
-              ) : saved.status === "in_review" && reviewer ? (
-                <>
-                  {administrator && <label className="field-hint">
-                    <input type="checkbox" checked={confirmedReview} disabled={busy || dirty}
-                      onChange={(event) => setConfirmedReview(event.target.checked)} />
-                    {vi ? "Tôi đã kiểm tra địa điểm trùng, tên, địa chỉ, tọa độ, nguồn và thuyết minh."
-                      : "I checked duplicates, name, address, coordinates, sources and narration."}
-                  </label>}
-                  <button
-                    className="button secondary"
-                    disabled={busy}
-                    onClick={() => setConfirm("reject")}
-                  >
-                    {vi ? "Yêu cầu sửa" : "Request changes"}
-                  </button>
-                  {administrator && <button
-                    className="button primary"
-                    disabled={busy || !ready || !confirmedReview || dirty}
-                    onClick={() => action("approve")}
-                  >
-                    <Check size={16} />
-                    {vi ? "Duyệt nội dung" : "Approve content"}
-                  </button>}
-                </>
-              ) : saved.status === "approved" && administrator ? (
-                <button
-                  className="button primary"
-                  disabled={busy || !ready || dirty}
-                  onClick={() => action("publish")}
-                >
-                  <ShieldCheck size={16} />
-                  {vi ? "Xuất bản" : "Publish"}
-                </button>
-              ) : (
-                <button
-                  className="button primary"
-                  onClick={close}
-                  disabled={busy}
-                >
-                  {vi ? "Hoàn tất" : "Done"}
-                  <Check size={16} />
+                  {busy ? t.saving : vi ? "Lưu thay đổi" : "Save changes"}
                 </button>
               )}
             </div>
@@ -1106,7 +1122,15 @@ export function Editor({
           onClose={() => setPreview(false)}
         >
           <div className="visitor-preview">
-            <Cover poi={form} large />
+            {imagePreview ? (
+              <img
+                className="staged-image large"
+                src={imagePreview}
+                alt={form.name}
+              />
+            ) : (
+              <Cover poi={form} large />
+            )}
             <div className="language-tabs">
               {languageCodes.map((l) => (
                 <button
@@ -1123,6 +1147,7 @@ export function Editor({
               <MapPin size={14} />
               {form.address}
             </p>
+            <p>{form.short_description}</p>
             <SpeechPlayer
               key={lang}
               text={translation(lang).text}

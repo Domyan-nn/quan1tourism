@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import (
     Boolean,
+    BigInteger,
     CheckConstraint,
     DateTime,
     Float,
@@ -72,6 +73,9 @@ class Poi(Base):
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
     name: Mapped[str] = mapped_column(String(180))
     address: Mapped[str] = mapped_column(String(300), default="")
+    short_description: Mapped[str] = mapped_column(Text, default="", server_default="")
+    view_count: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
+    listen_count: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
     category_id: Mapped[str] = mapped_column(ForeignKey("categories.id"), index=True)
     latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -90,6 +94,7 @@ class Poi(Base):
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False)
     __mapper_args__ = {"version_id_col": revision, "version_id_generator": False}
     __table_args__ = (
+        CheckConstraint("view_count >= 0 AND listen_count >= 0", name="nonnegative_poi_statistics"),
         CheckConstraint(
             "status IN ('draft','in_review','approved','published','archived')", name="valid_status"
         ),
@@ -116,6 +121,15 @@ class Poi(Base):
             row.text = value.get("text", "")
             rows.append(row)
         self.translation_rows = rows
+
+
+class PoiEngagement(Base):
+    __tablename__ = "poi_engagements"
+    session_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    poi_id: Mapped[str] = mapped_column(ForeignKey("pois.id", ondelete="CASCADE"), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(6), primary_key=True)
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    __table_args__ = (CheckConstraint("kind IN ('view','listen')", name="valid_engagement_kind"),)
 
 
 class PoiTranslation(Base):
