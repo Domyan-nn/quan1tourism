@@ -4,6 +4,7 @@ import type { Poi } from "@quan1/contracts";
 import { api } from "./index";
 import "leaflet/dist/leaflet.css";
 import "./map.css";
+declare const __MAP_TILE_URL__: string;
 
 type Point = { latitude: number | null; longitude: number | null };
 const center: L.LatLngTuple = [10.7769, 106.7009];
@@ -50,7 +51,7 @@ export function PlaceMap({
       14,
     );
     map.current = instance;
-    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    L.tileLayer(__MAP_TILE_URL__, {
       maxZoom: 19,
       referrerPolicy: "strict-origin-when-cross-origin",
       attribution:

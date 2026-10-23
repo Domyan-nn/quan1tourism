@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { cpSync } from "node:fs";
+if (process.argv.includes("--cloudflare")) process.env.VITE_MAP_TILE_URL = "/map-tiles/{z}/{x}/{y}.png";
 
 // One artifact works on Render or Cloudflare Pages: visitors /, administration /admin/.
 const result = spawnSync(process.execPath, ["node_modules/vite/bin/vite.js", "build", "apps/admin"], {
