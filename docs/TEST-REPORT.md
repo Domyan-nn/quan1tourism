@@ -1,5 +1,25 @@
 # Báo cáo kiểm thử thực tế
 
+## Cập nhật 23/10/2026: Supabase và Ollama qua hàng đợi HTTPS
+
+- Backend: **60 kiểm thử đạt**, gồm job bền vững, quyền worker/admin, lease hết hạn, nhận lại việc,
+  kết quả gửi lặp, thu hồi khóa ghép nối, chống trùng tên/Wikidata, ràng buộc identity trong DB,
+  xác nhận duyệt bắt buộc và sửa nội dung sau duyệt phải duyệt lại.
+- Typecheck, build artifact kết hợp `/` và `/admin/`, Ruff: đạt.
+- Playwright: **22 kiểm thử hiện có đạt** và **2 kiểm thử mới đạt** (desktop/mobile), xác minh
+  yêu cầu AI trên cloud tiếp tục sau khi tải lại trang, nhận bản nháp và không tự lưu/xuất bản.
+  Lượt 22 ca chạy trong sandbox cần dừng đúng máy chủ tạm khi teardown Windows; exit code cuối 0.
+  Hai ca mới chạy ngoài sandbox kết thúc bình thường, exit code 0.
+- Proxy Cloudflare: kiểm tra giữ path/query, cookie, body, header CSRF, Set-Cookie và không cache API.
+- Supabase thật: kết nối đúng project, sao lưu `public` bằng pg_dump và xác minh archive trước migration;
+  migration `0007`; các bảng riêng bật RLS. Không seed địa điểm hoặc tài khoản demo.
+- Tạo admin theo email người dùng cung cấp; đăng nhập và kiểm tra phiên trên Render đạt HTTP 200,
+  rồi đăng xuất phiên kiểm thử. Mật khẩu/token/backup chỉ nằm trong `.runtime/` được gitignore.
+- Ollama trên PC: `qwen3:4b` đã cài và phục vụ. Kiểm thử tự động dùng mock model/Wikimedia;
+  không coi đó là bằng chứng chất lượng nội dung AI hoặc kết quả triển khai Cloudflare thực tế.
+
+Hướng dẫn vận hành: [CLOUD-DEPLOYMENT.md](CLOUD-DEPLOYMENT.md).
+
 ## Cập nhật 23/10/2026: PostgreSQL và AI local nhập Wikipedia
 
 | Kiểm tra | Kết quả |
