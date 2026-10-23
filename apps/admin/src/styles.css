@@ -1247,7 +1247,7 @@ tbody tr:hover {
   justify-content: center;
   gap: 12px;
   font-size: 0.8rem;
-  color: #849773;
+  color: #526443;
 }
 .spin {
   animation: spin 1.1s linear infinite;
