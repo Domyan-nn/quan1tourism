@@ -95,6 +95,10 @@ def text_snapshot(snapshot):
 def transition(db: Session, poi: Poi, user: User, data):
     check_revision(poi, data.revision)
     action = data.action
+    if action in ("approve", "publish") and user.role != "admin":
+        raise HTTPException(403, "Quản trị viên phải kiểm tra và duyệt địa điểm trước khi xuất bản.")
+    if action == "approve" and not data.confirmed_review:
+        raise HTTPException(422, "Xác nhận đã kiểm tra địa điểm, nguồn, vị trí và nội dung trước khi duyệt.")
     if action in ("approve", "reject", "publish", "archive") and user.role not in ("reviewer", "admin"):
         raise HTTPException(403, "Chỉ người duyệt và quản trị viên được thực hiện thao tác này.")
     allowed = {
@@ -119,6 +123,9 @@ def transition(db: Session, poi: Poi, user: User, data):
             raise HTTPException(404, "Không tìm thấy phiên bản của địa điểm này.")
         if release:
             snapshot = release.snapshot
+            from .duplicates import ensure_unique, reserve_identities
+
+            ensure_unique(db, snapshot["name"], snapshot.get("source"), poi.id)
             for field in (
                 "name",
                 "address",
@@ -129,6 +136,8 @@ def transition(db: Session, poi: Poi, user: User, data):
                 "translations",
             ):
                 setattr(poi, field, copy.deepcopy(snapshot[field]))
+            poi.source = copy.deepcopy(snapshot.get("source"))
+            reserve_identities(db, poi)
         poi.status = "draft"
     else:
         poi.status = {
@@ -157,4 +166,5 @@ def transition(db: Session, poi: Poi, user: User, data):
             select(Release).where(Release.poi_id == poi.id, Release.is_current.is_(True))
         ):
             release.is_current = False
-    audit(db, user, poi, action, data.note)
+    audit(db, user, poi, action, ("Đã kiểm tra tên, địa chỉ, tọa độ, nguồn và thuyết minh. "
+                               if action == "approve" else "") + data.note)

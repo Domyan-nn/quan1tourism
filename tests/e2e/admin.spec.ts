@@ -193,11 +193,12 @@ test("editor publishes text and visitor listens in both languages with TTS", asy
   if (info.project.name === "mobile")
     await page.getByRole("button", { name: "Mở menu", exact: true }).click();
   await page.getByRole("button", { name: "Đăng xuất", exact: true }).click();
-  await login(page, "reviewer");
+  await login(page, "admin");
   await page
     .getByRole("textbox", { name: "Tìm địa điểm, địa chỉ…" })
     .fill(name);
   await page.getByRole("button", { name, exact: true }).click();
+  await page.getByRole("checkbox", { name: /Tôi đã kiểm tra địa điểm trùng/ }).check();
   await page
     .getByRole("button", { name: "Duyệt nội dung", exact: true })
     .last()
@@ -361,4 +362,40 @@ test("Wikipedia AI import fills a draft and persists its source", async ({
   await expect(
     page.getByRole("link", { name: `${name} · Wikipedia`, exact: true }),
   ).toHaveAttribute("href", sourceUrl + "?oldid=123");
+});
+
+test("cloud AI request resumes after reload and returns a private draft", async ({ page }) => {
+  let completed = false;
+  const name = "Bản nháp từ máy Ollama";
+  await page.route("**/api/v1/admin/ai/status", (route) => route.fulfill({
+    json: {mode: "worker", ready: true, model: "qwen3:4b", message: "Máy AI sẵn sàng"},
+  }));
+  await page.route("**/api/v1/admin/ai/jobs", (route) => route.fulfill({
+    status: 202, json: {id: "resume-test", status: "queued", result: null, error: ""},
+  }));
+  await page.route("**/api/v1/admin/ai/jobs/resume-test", (route) => route.fulfill({json: {
+    id: "resume-test", status: completed ? "completed" : "queued", error: "",
+    result: completed ? {
+      draft: {name, address: "Địa chỉ cần kiểm tra", category_id: "culture", latitude: null, longitude: null,
+        translations: {vi: {title: name, text: "Thuyết minh cần kiểm tra."}, en: {title: "Draft", text: "Review this draft."}},
+        source: {url: "https://vi.wikipedia.org/wiki/Worker_test", title: name, revision_id: 123,
+          retrieved_at: "2026-10-23T03:00:00Z", license: "CC BY-SA", model: "qwen3:4b", warnings: [],
+          wikidata_id: null, coordinate_source: null, image_url: null, image_page_url: null,
+          image_author: null, image_license: null}},
+      missing_fields: ["latitude", "longitude", "image"], elapsed_seconds: 60, existing_poi: null,
+    } : null,
+  }}));
+  await login(page);
+  await page.getByRole("button", {name: "Thêm địa điểm", exact: true}).click();
+  await page.getByLabel("URL Wikipedia", {exact: true}).fill("https://vi.wikipedia.org/wiki/Worker_test");
+  await page.getByRole("button", {name: "Tạo thông tin bằng AI", exact: true}).click();
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("quan1-ai-job"))).toBe("resume-test");
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.reload();
+  await page.getByRole("button", {name: "Thêm địa điểm", exact: true}).click();
+  await expect(page.getByText(/Đang chờ máy AI nhận việc/)).toBeVisible();
+  completed = true;
+  await expect(page.getByLabel("Tên địa điểm", {exact: false})).toHaveValue(name);
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("quan1-ai-job"))).toBeNull();
+  await expect(page.getByRole("button", {name: "Lưu bản nháp", exact: true})).toBeEnabled();
 });

@@ -20,12 +20,12 @@ jobs:
       - run: npm ci
       - run: uv sync --frozen
         working-directory: services/backend
-      - run: uv run ruff check app tests
+      - run: uv run ruff check --config pyproject.toml app tests migrations ../../scripts/ollama_worker.py ../../scripts/configure_ai_worker.py ../../scripts/migrate_cloud.py ../../scripts/check_connections.py
         working-directory: services/backend
       - run: uv run pytest -q
         working-directory: services/backend
       - run: npm run typecheck
-      - run: npm run build
+      - run: npm run build:site
       - run: npm run test:e2e
       - uses: actions/upload-artifact@v4
         if: always()

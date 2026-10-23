@@ -11,7 +11,7 @@ from sqlalchemy.orm import sessionmaker
 from app.auth import COOKIE, digest, passwords
 from app.models import Session, User, now
 from conftest import login
-from test_workflow import create, publish, ready, upload
+from test_workflow import create, publish, upload
 
 
 @pytest.fixture(autouse=True)
@@ -113,7 +113,7 @@ def test_visitor_cannot_access_admin_drafts_or_private_media(env):
     client, _, _ = env
     login(client)
     draft = upload(client, create(client))
-    public = publish(client, upload(client, ready(client)))
+    public = publish(client, upload(client, create(client, "Địa điểm công khai khác")))
     assert client.post("/api/v1/auth/register", json=payload()).status_code == 201
     for path in (
         "/admin/auth/me",

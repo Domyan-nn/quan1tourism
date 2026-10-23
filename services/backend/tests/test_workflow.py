@@ -27,8 +27,11 @@ def image_bytes():
     return result.getvalue()
 
 
-def create(client):
-    response = client.post("/api/v1/admin/pois", json=draft_payload())
+def create(client, name=None):
+    payload = draft_payload()
+    if name:
+        payload["name"] = name
+    response = client.post("/api/v1/admin/pois", json=payload)
     assert response.status_code == 201, response.text
     return response.json()
 
@@ -46,7 +49,7 @@ def upload(client, poi):
 def action(client, poi, name, **kwargs):
     return client.post(
         f"/api/v1/admin/pois/{poi['id']}/actions",
-        json={"revision": poi["revision"], "action": name, **kwargs},
+        json={"revision": poi["revision"], "action": name, "confirmed_review": name == "approve", **kwargs},
     )
 
 
@@ -57,7 +60,7 @@ def ready(client):
 def publish(client, poi):
     assert action(client, poi, "publish").status_code == 403  # editor cannot bypass review
     poi = action(client, poi, "submit").json()
-    login(client, "reviewer")
+    login(client, "admin")
     poi = action(client, poi, "approve").json()
     response = action(client, poi, "publish")
     assert response.status_code == 200, response.text
@@ -236,7 +239,7 @@ def test_cannot_restore_another_places_release(env):
     login(client)
     poi = publish(client, ready(client))
     history = client.get(f"/api/v1/admin/pois/{poi['id']}/history").json()
-    another = create(client)
+    another = client.post("/api/v1/admin/pois", json=draft_payload() | {"name": "Một địa điểm khác"}).json()
     assert action(client, another, "restore", release_id=history["releases"][0]["id"]).status_code == 404
 
 

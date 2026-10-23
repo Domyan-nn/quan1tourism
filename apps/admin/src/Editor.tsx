@@ -114,11 +114,14 @@ export function Editor({
   const [historyError, setHistoryError] = useState("");
   const [confirm, setConfirm] = useState<"archive" | "reject" | null>(null);
   const [note, setNote] = useState("");
+  const [confirmedReview, setConfirmedReview] = useState(false);
+  const [duplicates, setDuplicates] = useState<{id: string; name: string; address: string}[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
   const dirty =
     JSON.stringify(inputData(form)) !== JSON.stringify(inputData(saved));
   const locked = ["in_review", "archived"].includes(saved.status);
   const reviewer = user.role === "reviewer" || user.role === "admin";
+  const administrator = user.role === "admin";
   const enabledLanguages = languages.filter((language) => language.enabled);
   const languageCodes = enabledLanguages.map((language) => language.code);
   const translation = (code: string) =>
@@ -160,6 +163,23 @@ export function Editor({
     },
   ];
 
+  useEffect(() => {
+    setConfirmedReview(false);
+  }, [saved.id, saved.revision]);
+  useEffect(() => {
+    if (saved.id || !form.name.trim()) {
+      setDuplicates([]);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      api<{items: typeof duplicates}>("/admin/pois/check-duplicates", {
+        method: "POST", body: JSON.stringify(inputData(form)), signal: controller.signal,
+      }).then((result) => { if (!controller.signal.aborted) setDuplicates(result.items); })
+        .catch(() => { /* Saving always checks again on the server. */ });
+    }, 400);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [saved.id, form.name, form.source]);
   useEffect(() => {
     const before = (e: BeforeUnloadEvent) => {
       if (dirty || busy) e.preventDefault();
@@ -307,6 +327,7 @@ export function Editor({
           revision: p.revision,
           note,
           release_id: releaseId,
+          confirmed_review: type === "approve" && confirmedReview,
         }),
       });
       accept(result);
@@ -432,6 +453,13 @@ export function Editor({
                   </strong>
                   <p>{saved.note}</p>
                 </div>
+              </div>
+            )}
+            {duplicates.length > 0 && (
+              <div className="notice error" role="alert">
+                <strong>{vi ? "Địa điểm đã tồn tại" : "Place already exists"}</strong>
+                {duplicates.map((item) => <p key={item.id}>{item.name} · {item.address}</p>)}
+                <p>{vi ? "Đóng biểu mẫu và mở địa điểm hiện có để kiểm tra, chỉnh sửa." : "Close this form and open the existing place to review or edit it."}</p>
               </div>
             )}
             {error && (
@@ -869,7 +897,7 @@ export function Editor({
                 {saved.status === "published" && (
                   <a
                     className="button secondary full-width"
-                    href={`http://127.0.0.1:5174/?poi=${encodeURIComponent(saved.id)}`}
+                    href={`${location.port === "5173" ? "http://127.0.0.1:5174/" : "/"}?poi=${encodeURIComponent(saved.id)}`}
                     target="_blank"
                     rel="noreferrer"
                   >
@@ -1027,6 +1055,12 @@ export function Editor({
                 </button>
               ) : saved.status === "in_review" && reviewer ? (
                 <>
+                  {administrator && <label className="field-hint">
+                    <input type="checkbox" checked={confirmedReview} disabled={busy || dirty}
+                      onChange={(event) => setConfirmedReview(event.target.checked)} />
+                    {vi ? "Tôi đã kiểm tra địa điểm trùng, tên, địa chỉ, tọa độ, nguồn và thuyết minh."
+                      : "I checked duplicates, name, address, coordinates, sources and narration."}
+                  </label>}
                   <button
                     className="button secondary"
                     disabled={busy}
@@ -1034,16 +1068,16 @@ export function Editor({
                   >
                     {vi ? "Yêu cầu sửa" : "Request changes"}
                   </button>
-                  <button
+                  {administrator && <button
                     className="button primary"
-                    disabled={busy || !ready}
+                    disabled={busy || !ready || !confirmedReview || dirty}
                     onClick={() => action("approve")}
                   >
                     <Check size={16} />
                     {vi ? "Duyệt nội dung" : "Approve content"}
-                  </button>
+                  </button>}
                 </>
-              ) : saved.status === "approved" && reviewer ? (
+              ) : saved.status === "approved" && administrator ? (
                 <button
                   className="button primary"
                   disabled={busy || !ready || dirty}

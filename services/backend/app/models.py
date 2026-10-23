@@ -162,3 +162,36 @@ class Audit(Base):
     action: Mapped[str] = mapped_column(String(40))
     detail: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class PoiIdentity(Base):
+    __tablename__ = "poi_identities"
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    poi_id: Mapped[str] = mapped_column(ForeignKey("pois.id", ondelete="CASCADE"), index=True)
+
+
+class AiJob(Base):
+    __tablename__ = "ai_jobs"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    requested_by: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    status: Mapped[str] = mapped_column(String(20), default="queued", index=True)
+    payload: Mapped[dict] = mapped_column(JSON)
+    result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    error: Mapped[str] = mapped_column(Text, default="")
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    lease_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    __table_args__ = (
+        CheckConstraint("status IN ('queued','running','completed','failed')", name="valid_ai_job_status"),
+    )
+
+
+class AiWorker(Base):
+    __tablename__ = "ai_workers"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    model: Mapped[str] = mapped_column(String(100))
+    ready: Mapped[bool] = mapped_column(Boolean, default=False)
+    token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)

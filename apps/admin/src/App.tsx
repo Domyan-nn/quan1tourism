@@ -1188,8 +1188,8 @@ export function App() {
               <ShieldCheck size={20} />
               <p>
                 {locale === "vi"
-                  ? "Biên tập viên gửi duyệt. Người duyệt hoặc quản trị viên kiểm tra và xuất bản. Du khách chỉ nhìn thấy bản đã xuất bản."
-                  : "Editors submit drafts. Reviewers or administrators approve and publish. Visitors only see published versions."}
+                  ? "Biên tập viên gửi duyệt. Người duyệt có thể yêu cầu sửa. Quản trị viên kiểm tra, xác nhận và xuất bản. Du khách chỉ nhìn thấy bản đã xuất bản."
+                  : "Editors submit drafts. Reviewers can request changes. Administrators check, confirm and publish. Visitors only see published versions."}
               </p>
             </div>
             <button

@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BookOpen, LoaderCircle, Sparkles } from "lucide-react";
-import { api } from "@quan1/api-client";
-import type { Language, WikipediaDraft } from "@quan1/contracts";
+import { api, ApiError } from "@quan1/api-client";
+import type { AiJob, Language, WikipediaDraft } from "@quan1/contracts";
 
 type Props = {
   languages: Language[];
@@ -23,6 +23,7 @@ export function WikipediaImport({
     ready: boolean;
     model: string;
     message: string;
+    mode: "direct" | "worker";
   } | null>(null);
   const [selected, setSelected] = useState(
     languages
@@ -32,6 +33,49 @@ export function WikipediaImport({
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
+  const [jobId, setJobId] = useState(() => localStorage.getItem("quan1-ai-job") ?? "");
+  const [jobState, setJobState] = useState("");
+  const callbacks = useRef({ onApply, onBusy });
+  callbacks.current = { onApply, onBusy };
+  useEffect(() => {
+    if (!jobId) return;
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout>;
+    setGenerating(true);
+    callbacks.current.onBusy(true);
+    async function poll() {
+      try {
+        const job = await api<AiJob>(`/admin/ai/jobs/${jobId}`, { signal: controller.signal });
+        if (controller.signal.aborted) return;
+        setJobState(job.status);
+        if (job.status === "failed") throw new Error(job.error);
+        if (job.status === "completed" && job.result) {
+          callbacks.current.onApply(job.result);
+          finish();
+          return;
+        }
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        // Network/server interruptions keep the persisted job; a reload resumes polling.
+        if (err instanceof ApiError && (err.status === 0 || err.status >= 500)) {
+          setJobState("reconnecting");
+        } else {
+          setError((err as Error).message);
+          finish();
+          return;
+        }
+      }
+      timer = setTimeout(poll, 2500);
+    }
+    function finish() {
+      localStorage.removeItem("quan1-ai-job");
+      setJobId("");
+      setGenerating(false);
+      callbacks.current.onBusy(false);
+    }
+    void poll();
+    return () => { controller.abort(); clearTimeout(timer); callbacks.current.onBusy(false); };
+  }, [jobId]);
   useEffect(() => {
     let ignore = false;
     api<typeof status>("/admin/ai/status")
@@ -50,7 +94,17 @@ export function WikipediaImport({
     setError("");
     setGenerating(true);
     onBusy(true);
+    let queued = false;
     try {
+      if (status?.mode === "worker") {
+        const job = await api<AiJob>("/admin/ai/jobs", {
+          method: "POST", body: JSON.stringify({ url: url.trim(), language_codes: selected }),
+        });
+        localStorage.setItem("quan1-ai-job", job.id);
+        setJobId(job.id);
+        queued = true;
+        return;
+      }
       const result = await api<WikipediaDraft>("/admin/ai/wikipedia", {
         method: "POST",
         body: JSON.stringify({ url: url.trim(), language_codes: selected }),
@@ -67,8 +121,10 @@ export function WikipediaImport({
     } catch (err) {
       setError((err as Error).message);
     } finally {
-      setGenerating(false);
-      onBusy(false);
+      if (!queued) {
+        setGenerating(false);
+        onBusy(false);
+      }
     }
   }
 
@@ -153,8 +209,8 @@ export function WikipediaImport({
         <span className="field-hint" role="status">
           {generating
             ? vi
-              ? "Có thể mất vài phút. Nhiều ngôn ngữ sẽ lâu hơn."
-              : "This may take a few minutes. More languages take longer."
+              ? jobState === "queued" ? "Đang chờ máy AI nhận việc. Bạn có thể tải lại trang và tiếp tục chờ." : jobState === "reconnecting" ? "Đang kết nối lại để lấy kết quả…" : "Máy AI đang tạo bản nháp để quản trị viên kiểm tra…"
+              : jobState === "queued" ? "Waiting for your AI computer. Reloading will resume this request." : "Generating a draft for administrator review…"
             : status
               ? `${status.model} · ${status.message}`
               : vi

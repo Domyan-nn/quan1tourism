@@ -1,4 +1,5 @@
 import io
+import os
 import secrets
 import time
 import unicodedata
@@ -22,8 +23,11 @@ from .db import MEDIA_ROOT, get_db
 from .models import Audit, Category, Language, Media, Poi, Release, Session, User, now, uid
 from .schemas import ActionInput, CategoryInput, LanguageInput, Login, PoiInput, Register, WikipediaImportInput
 from .wikipedia import generate_draft, ollama_status
+from .ai_jobs import prepare_import, queue_status, router as ai_router, worker_mode
+from .duplicates import ensure_unique, find_duplicates, reserve_identities
 
 app = FastAPI(title="Saigon Stories API", version="0.1.0")
+app.include_router(ai_router)
 editors = require("editor", "reviewer", "admin")
 login_attempts: dict[str, deque] = defaultdict(deque)
 registration_attempts: dict[str, deque] = defaultdict(deque)
@@ -41,7 +45,7 @@ async def request_context(request: Request, call_next):
     response.headers["X-Request-ID"] = request_id
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "same-origin"
-    if request.url.path.startswith("/api/v1/admin") or request.url.path.startswith("/api/v1/auth"):
+    if request.url.path.startswith(("/api/v1/admin", "/api/v1/auth", "/api/v1/worker")):
         response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -315,38 +319,43 @@ def apply_input(poi: Poi, data: PoiInput, db: DbSession):
 
 
 @app.get("/api/v1/admin/ai/status")
-def ai_status(user: User = Depends(editors)):
-    return ollama_status()
+def ai_status(db: DbSession = Depends(get_db), user: User = Depends(editors)):
+    return queue_status(db) if worker_mode() else {**ollama_status(), "mode": "direct"}
 
 
 @app.post("/api/v1/admin/ai/wikipedia")
 def wikipedia_preview(
     data: WikipediaImportInput, db: DbSession = Depends(get_db), user: User = Depends(editors)
 ):
-    available = languages(db, enabled_only=True)
-    requested = set(data.language_codes) | {item.code for item in available if item.required}
-    if not requested or not requested.issubset({item.code for item in available}):
-        raise HTTPException(422, "Chọn các ngôn ngữ đang được bật để tạo nội dung.")
-    selected = [{"code": item.code, "name": item.native_name} for item in available if item.code in requested]
-    categories = [{"id": item.id, "name": item.name} for item in db.scalars(select(Category))]
-    if not categories:
-        raise HTTPException(409, "Hãy tạo ít nhất một danh mục trước khi nhập địa điểm.")
-    result = generate_draft(data.url, categories, selected)
-    existing = db.scalar(select(Poi).where(Poi.source["url"].as_string() == result["draft"]["source"]["url"]))
-    result["existing_poi"] = {"id": existing.id, "name": existing.name} if existing else None
+    if worker_mode():
+        raise HTTPException(409, "Hãy tạo yêu cầu AI qua hàng đợi.")
+    payload, existing = prepare_import(db, data)
+    if existing:
+        return {"existing_poi": existing}
+    result = generate_draft(data.url, payload["categories"], payload["languages"], article=payload["article"])
+    result["existing_poi"] = None
     return result
+
+
+@app.post("/api/v1/admin/pois/check-duplicates")
+def check_duplicates(data: PoiInput, db: DbSession = Depends(get_db), user: User = Depends(editors)):
+    return {"items": find_duplicates(db, data.name, data.source.model_dump() if data.source else None)}
 
 
 @app.post("/api/v1/admin/pois", status_code=201)
 def create_poi(data: PoiInput, db: DbSession = Depends(get_db), user: User = Depends(editors)):
-    if data.source and db.scalar(select(Poi.id).where(Poi.source["url"].as_string() == data.source.url)):
-        raise HTTPException(409, "Bài Wikipedia này đã có địa điểm. Hãy tìm và mở địa điểm hiện có để chỉnh sửa.")
+    ensure_unique(db, data.name, data.source.model_dump() if data.source else None)
     poi = Poi(id=uid(), translations={})
     apply_input(poi, data, db)
     db.add(poi)
-    db.flush()
-    audit(db, user, poi, "create")
-    db.commit()
+    try:
+        db.flush()
+        reserve_identities(db, poi)
+        audit(db, user, poi, "create")
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, "Địa điểm vừa được tạo ở phiên khác. Tìm địa điểm hiện có để kiểm tra.")
     return serialize(poi, db)
 
 
@@ -361,11 +370,17 @@ def update_poi(poi_id: str, data: PoiInput, db: DbSession = Depends(get_db), use
     check_revision(poi, data.revision)
     if poi.status in ("in_review", "archived"):
         raise HTTPException(409, "Hãy trả nội dung về bản nháp trước khi chỉnh sửa.")
+    ensure_unique(db, data.name, data.source.model_dump() if data.source else None, poi.id)
     apply_input(poi, data, db)
     poi.status = "draft"
     touch(poi)
     audit(db, user, poi, "update")
-    db.commit()
+    try:
+        reserve_identities(db, poi)
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, "Địa điểm trùng với nội dung vừa được lưu ở phiên khác.")
     return serialize(poi, db)
 
 
@@ -514,3 +529,10 @@ def public_poi(poi_id: str, locale: str = Query("vi", max_length=35), db: DbSess
     if not snapshot["translations"].get(locale, {}).get("tts_ready"):
         raise HTTPException(404, "Chưa có thuyết minh cho ngôn ngữ này. Vui lòng chọn ngôn ngữ khác.")
     return snapshot
+
+
+# Mount last so that authenticated APIs always take precedence over static files.
+if os.getenv("STATIC_ROOT"):
+    from .static_site import mount_site
+
+    mount_site(app, os.environ["STATIC_ROOT"])

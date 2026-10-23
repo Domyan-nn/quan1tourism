@@ -11,7 +11,7 @@ from .models import Session, User
 
 passwords = PasswordHash.recommended()
 COOKIE = "quan1_session"
-COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() == "true"
+COOKIE_SECURE = os.getenv("APP_ENV") == "production" or os.getenv("COOKIE_SECURE", "false").lower() == "true"
 
 
 def digest(value: str):

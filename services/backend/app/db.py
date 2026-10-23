@@ -4,15 +4,19 @@ from pathlib import Path
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
-from .config import RUNTIME
+from .config import RUNTIME, database_url
 
 RUNTIME.mkdir(exist_ok=True)
 MEDIA_ROOT = Path(os.getenv("MEDIA_ROOT", str(RUNTIME / "media")))
 MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
-DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{(RUNTIME / 'quan1.db').as_posix()}")
+DATABASE_URL = database_url()
 engine = create_engine(
     DATABASE_URL,
-    **({"connect_args": {"check_same_thread": False}} if DATABASE_URL.startswith("sqlite") else {}),
+    pool_pre_ping=True,
+    **({"connect_args": {"check_same_thread": False}} if DATABASE_URL.startswith("sqlite") else {
+        "connect_args": {"connect_timeout": 10, "prepare_threshold": None},
+        "pool_size": 3, "max_overflow": 2, "pool_recycle": 300,
+    }),
 )
 if DATABASE_URL.startswith("sqlite"):
 

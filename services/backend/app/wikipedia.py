@@ -310,11 +310,11 @@ def ollama_status():
         return {"ready": False, "model": OLLAMA_MODEL, "message": exc.detail}
 
 
-def generate_draft(url, categories, languages):
+def generate_draft(url, categories, languages, *, article=None):
     if not generation_slot.acquire(blocking=False):
         raise HTTPException(429, "AI local đang tạo địa điểm khác. Vui lòng thử lại sau.")
     try:
-        article = get_article(url)
+        article = article or get_article(url)
         source = get_source(article)
         schema = GeneratedPlace.model_json_schema()
         schema["properties"]["category_id"]["enum"] = [item["id"] for item in categories]

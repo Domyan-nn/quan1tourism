@@ -56,6 +56,12 @@ export interface WikipediaDraft {
   elapsed_seconds: number;
   existing_poi: { id: string; name: string } | null;
 }
+export interface AiJob {
+  id: string;
+  status: "queued" | "running" | "completed" | "failed";
+  result: WikipediaDraft | null;
+  error: string;
+}
 export interface Poi {
   id: string;
   name: string;

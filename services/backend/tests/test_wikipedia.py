@@ -198,7 +198,7 @@ def test_generate_review_save_and_publish_keep_sources(env, upstream):
         client.post("/api/v1/admin/ai/wikipedia", json={"url": URL}).json()["existing_poi"]["id"] == poi["id"]
     )
     poi = action(client, poi, "submit").json()
-    login(client, "reviewer")
+    login(client, "admin")
     poi = action(client, poi, "approve").json()
     assert action(client, poi, "publish").status_code == 200
     public = client.get(f"/api/v1/pois/{poi['id']}").json()

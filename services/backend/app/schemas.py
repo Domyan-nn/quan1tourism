@@ -120,6 +120,7 @@ class ActionInput(BaseModel):
     revision: int = Field(ge=1)
     note: str = Field(default="", max_length=2000)
     release_id: str | None = None
+    confirmed_review: bool = False
 
 
 class CategoryInput(BaseModel):

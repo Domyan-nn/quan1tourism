@@ -4,6 +4,9 @@ Trang quản trị nội dung thuyết minh du lịch bằng **React + TypeScrip
 
 ## Chạy local
 
+Triển khai Supabase + Render + Cloudflare và nhận việc bằng Ollama trên máy cá nhân:
+xem [hướng dẫn triển khai cloud](docs/CLOUD-DEPLOYMENT.md).
+
 Cần Node.js **22.12 trở lên**, Python **3.12** và [uv](https://docs.astral.sh/uv/). Không cần Docker. Trong phiên triển khai đã tải Node portable vào `.tools/node-v22.22.0-win-x64`; thư mục này không đưa vào Git.
 
 Mở PowerShell tại thư mục dự án. Nếu chưa có Node trên PATH nhưng đã có bản portable:

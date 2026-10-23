@@ -1,0 +1,24 @@
+# Apply to the existing service after checking its settings; do not create a second DB.
+services:
+  - type: web
+    name: quan1-tourism-api
+    runtime: docker
+    plan: starter
+    healthCheckPath: /api/v1/health/ready
+    disk:
+      name: quan1-media
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: AI_MODE
+        value: worker
+      - key: MEDIA_ROOT
+        value: /var/data/media
+      - key: DATABASE_URL
+        sync: false
+      - key: AI_WORKER_TOKEN
+        sync: false
