@@ -74,7 +74,13 @@ khóa trong Environment có ưu tiên và không thể đổi bằng API ghép n
 Ảnh Commons dùng URL gốc; ảnh upload cần disk bền vững để không mất khi deploy. Không dùng thư mục
 filesystem tạm của Render cho ảnh cần giữ lâu dài. Sau deploy, kiểm tra `/api/v1/health/ready`.
 
-Cloudflare Pages có thể dùng cùng artifact: build `npm ci && npm run build:site`, output
+Cloudflare đang liên kết GitHub bằng **Workers Builds**, Worker tên `quan1tourism`.
+`wrangler.jsonc` build hai giao diện và phục vụ static assets; `/api/*` chạy qua Worker tới Render.
+Worker dùng origin API đã cấu hình sẵn, không cần thêm secret Cloudflare. Dashboard Worker:
+`https://dash.cloudflare.com/a47553d3f52e76f44080617e56c069fe/workers/services/view/quan1tourism/production`.
+Build từ gốc repo và deploy bằng `npx wrangler deploy` hoặc `npm run deploy:cloudflare`.
+
+Cloudflare Pages (nếu dùng thay Workers) có thể dùng cùng artifact: build `npm ci && npm run build:site`, output
 `apps/web/dist`, root repository. Đặt `NODE_VERSION=22` và biến server
 `RENDER_API_ORIGIN=https://quan1-tourism-api.onrender.com` (proxy cũng dùng URL này làm mặc định). Pages Functions trong `functions/api/[[path]].ts`
 proxy `/api/*` tới Render, giữ cookie đăng nhập trên cùng origin. Không cache API. Nếu đã có Pages

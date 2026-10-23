@@ -12,6 +12,7 @@
     "dev:web": "npm run dev --workspace @quan1/web",
     "build": "npm run build --workspaces --if-present",
     "build:site": "node scripts/build-site.mjs",
+    "deploy:cloudflare": "wrangler deploy",
     "typecheck": "tsc --noEmit -p apps/admin && tsc --noEmit -p apps/web",
     "test:e2e": "playwright test"
   },
@@ -26,7 +27,8 @@
     "@vitejs/plugin-react": "^5.1.4",
     "prettier": "^3.6.2",
     "typescript": "~5.9.3",
-    "vite": "^7.3.1"
+    "vite": "^7.3.1",
+    "wrangler": "^4.152.0"
   },
   "dependencies": {
     "@fontsource/be-vietnam-pro": "^5.2.0",
