@@ -1,5 +1,4 @@
 import io
-import wave
 
 from fastapi.testclient import TestClient
 from PIL import Image
@@ -22,14 +21,9 @@ def draft_payload():
     }
 
 
-def wav_bytes():
-    """Short silence is a test-only codec fixture, never sample visitor narration."""
+def image_bytes():
     result = io.BytesIO()
-    with wave.open(result, "wb") as audio:
-        audio.setnchannels(1)
-        audio.setsampwidth(2)
-        audio.setframerate(8000)
-        audio.writeframes(b"\0\0" * 800)
+    Image.new("RGB", (20, 20)).save(result, format="PNG")
     return result.getvalue()
 
 
@@ -39,11 +33,11 @@ def create(client):
     return response.json()
 
 
-def upload(client, poi, locale="vi"):
+def upload(client, poi):
     response = client.post(
         f"/api/v1/admin/pois/{poi['id']}/upload",
-        params={"kind": "audio", "locale": locale, "revision": poi["revision"]},
-        files={"file": ("test-only.wav", wav_bytes(), "audio/wav")},
+        params={"kind": "image", "revision": poi["revision"]},
+        files={"file": ("cover.png", image_bytes(), "image/png")},
     )
     assert response.status_code == 200, response.text
     return response.json()
@@ -57,8 +51,7 @@ def action(client, poi, name, **kwargs):
 
 
 def ready(client):
-    poi = create(client)
-    return upload(client, upload(client, poi), "en")
+    return create(client)
 
 
 def publish(client, poi):
@@ -76,44 +69,47 @@ def test_anonymous_cannot_read_drafts_or_private_media(env):
     assert client.get("/api/v1/admin/pois").status_code == 401
     login(client)
     poi = upload(client, create(client))
-    audio_id = poi["translations"]["vi"]["audio_id"]
-    assert client.get(f"/api/v1/media/{audio_id}").status_code == 200
+    image_id = poi["image_id"]
+    assert client.get(f"/api/v1/media/{image_id}").status_code == 200
     client.post("/api/v1/auth/logout")
     assert client.get(f"/api/v1/pois/{poi['id']}").status_code == 404
-    assert client.get(f"/api/v1/media/{audio_id}").status_code == 404
+    assert client.get(f"/api/v1/media/{image_id}").status_code == 404
     assert client.get("/api/v1/pois").json()["items"] == []
 
 
-def test_full_bilingual_workflow_and_audio_range(env):
-    client, _, _ = env
+def test_full_bilingual_workflow_needs_only_text(env):
+    from app.models import Media, PoiTranslation
+
+    client, factory, directory = env
     login(client)
     poi = publish(client, ready(client))
     client.post("/api/v1/auth/logout")
     for locale in ("vi", "en"):
         public = client.get(f"/api/v1/pois/{poi['id']}?locale={locale}")
         assert public.status_code == 200
-        audio_id = public.json()["translations"][locale]["audio_id"]
-        audio = client.get(f"/api/v1/media/{audio_id}", headers={"Range": "bytes=0-43"})
-        assert audio.status_code == 206
-        assert audio.headers["content-type"] == "audio/wav"
-        assert len(audio.content) == 44
+        tr = public.json()["translations"][locale]
+        assert tr["tts_ready"] and tr["text"]
+        assert "audio_id" not in tr
+    with factory() as db:
+        assert not list(db.scalars(select(Media)))
+        assert len(list(db.scalars(select(PoiTranslation)))) == 2
+    assert not list(directory.glob("*.wav"))
     assert len(client.get("/api/v1/pois").json()["items"]) == 1
 
 
-def test_require_all_languages_and_audio_matching_text(env):
+def test_required_languages_and_text_edits_need_no_audio(env):
     client, _, _ = env
     login(client)
-    poi = create(client)
+    payload = draft_payload()
+    payload["translations"]["en"]["text"] = ""
+    poi = client.post("/api/v1/admin/pois", json=payload).json()
     assert action(client, poi, "submit").status_code == 422
-    poi = upload(client, poi)
-    assert action(client, poi, "submit").status_code == 422
-    poi = upload(client, poi, "en")
     payload = draft_payload()
     payload["revision"] = poi["revision"]
     payload["translations"]["vi"]["text"] = "Nội dung đã thay đổi."
     poi = client.put(f"/api/v1/admin/pois/{poi['id']}", json=payload).json()
-    assert poi["translations"]["vi"]["audio_valid"] is False
-    assert action(client, poi, "submit").status_code == 422
+    assert poi["translations"]["vi"]["tts_ready"] is True
+    assert action(client, poi, "submit").status_code == 200
 
 
 def test_live_release_is_immutable_while_new_draft_is_edited(env):
@@ -166,7 +162,7 @@ def test_malformed_and_mislabelled_uploads_are_rejected(env):
     poi = create(client)
     url = f"/api/v1/admin/pois/{poi['id']}/upload?kind=audio&revision={poi['revision']}"
     assert client.post(url, files={"file": ("fake.mp3", b"not audio", "audio/mpeg")}).status_code == 422
-    assert client.post(url, files={"file": ("wrong.mp3", wav_bytes(), "audio/mpeg")}).status_code == 422
+    assert client.post(url, files={"file": ("wrong.mp3", image_bytes(), "audio/mpeg")}).status_code == 422
     assert not list(directory.glob("*.wav"))
     image_url = url.replace("kind=audio", "kind=image")
     assert (

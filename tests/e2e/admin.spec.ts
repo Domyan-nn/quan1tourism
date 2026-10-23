@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
+import { mockSpeech } from "./speech";
 
 async function login(page: Page, role = "admin") {
   await page.goto("/");
@@ -13,24 +14,6 @@ async function login(page: Page, role = "admin") {
     page.getByRole("button", { name: "Dinh Độc Lập", exact: true }),
   ).toBeVisible();
 }
-function wav() {
-  // Test-only silent WAV fixture; never used as demo narration.
-  const audio = Buffer.alloc(16044);
-  audio.write("RIFF", 0);
-  audio.writeUInt32LE(16036, 4);
-  audio.write("WAVEfmt ", 8);
-  audio.writeUInt32LE(16, 16);
-  audio.writeUInt16LE(1, 20);
-  audio.writeUInt16LE(1, 22);
-  audio.writeUInt32LE(8000, 24);
-  audio.writeUInt32LE(16000, 28);
-  audio.writeUInt16LE(2, 32);
-  audio.writeUInt16LE(16, 34);
-  audio.write("data", 36);
-  audio.writeUInt32LE(16000, 40);
-  return audio;
-}
-
 test("admin accessibility on dashboard", async ({ page }) => {
   await login(page);
   const results = await new AxeBuilder({ page })
@@ -159,7 +142,7 @@ test("keyboard accessible help and display preferences", async ({
   ).toBeVisible();
 });
 
-test("editor creates bilingual content, reviewer publishes, guest receives both audio files", async ({
+test("editor publishes text and visitor listens in both languages with TTS", async ({
   page,
   browser,
 }, info) => {
@@ -189,29 +172,7 @@ test("editor creates bilingual content, reviewer publishes, guest receives both 
   await page
     .getByRole("button", { name: "Lưu & tiếp tục", exact: true })
     .click();
-  const uploads = page.locator(".audio-upload-card input[type=file]");
-  await uploads.nth(0).setInputFiles({
-    name: "test-only-vi.wav",
-    mimeType: "audio/wav",
-    buffer: wav(),
-  });
-  await expect(
-    page
-      .locator(".audio-upload-card")
-      .nth(0)
-      .getByText("Sẵn sàng", { exact: true }),
-  ).toBeVisible();
-  await uploads.nth(1).setInputFiles({
-    name: "test-only-en.wav",
-    mimeType: "audio/wav",
-    buffer: wav(),
-  });
-  await expect(
-    page
-      .locator(".audio-upload-card")
-      .nth(1)
-      .getByText("Sẵn sàng", { exact: true }),
-  ).toBeVisible();
+  await expect(page.locator(".tts-preview-card")).toHaveCount(2);
   await page
     .getByRole("button", { name: "Lưu & tiếp tục", exact: true })
     .click();
@@ -252,29 +213,48 @@ test("editor creates bilingual content, reviewer publishes, guest receives both 
   ).toBeVisible();
   const guestContext = await browser.newContext();
   const guest = await guestContext.newPage();
+  await mockSpeech(guest);
   await guest.goto("http://127.0.0.1:5184");
   await guest.getByRole("button").filter({ hasText: viTitle }).click();
   await expect(
     guest.getByRole("heading", { name: viTitle, exact: true }),
   ).toBeVisible();
-  const viSrc = await guest.locator("audio").getAttribute("src");
+  await expect(guest.locator("audio")).toHaveCount(0);
   await guest
-    .locator("audio")
-    .evaluate((audio: HTMLAudioElement) => audio.play());
-  await expect
-    .poll(() =>
-      guest.locator("audio").evaluate((a: HTMLAudioElement) => a.currentTime),
-    )
-    .toBeGreaterThan(0);
-  await guest.getByRole("button", { name: "Tiếng Việt", exact: true }).click();
+    .getByRole("button", { name: "Nghe thuyết minh", exact: true })
+    .click();
+  expect(
+    await guest.evaluate(() => (window as any).__speech.calls[0]),
+  ).toMatchObject({
+    lang: "vi-VN",
+    text: "Nội dung thử nghiệm giao diện.",
+    voice: "vi-VN",
+  });
+  await guest.getByRole("button", { name: "Tạm dừng", exact: true }).click();
+  await expect(
+    guest.getByRole("button", { name: "Tiếp tục đọc" }),
+  ).toBeVisible();
+  await guest.getByRole("button", { name: "Tiếp tục đọc" }).click();
+  await guest
+    .getByRole("combobox", { name: "Ngôn ngữ thuyết minh" })
+    .selectOption("en");
   await expect(
     guest.getByRole("heading", { name: enTitle, exact: true }),
   ).toBeVisible();
-  const enSrc = await guest.locator("audio").getAttribute("src");
-  expect(enSrc).not.toBe(viSrc);
-  const response = await guest.request.get(`http://127.0.0.1:5184${enSrc}`, {
-    headers: { Range: "bytes=0-43" },
+  await guest.getByLabel("Speed", { exact: true }).selectOption("1.5");
+  await guest
+    .getByRole("button", { name: "Listen to narration", exact: true })
+    .click();
+  expect(
+    await guest.evaluate(() => (window as any).__speech.calls.at(-1)),
+  ).toMatchObject({
+    lang: "en-US",
+    rate: 1.5,
+    text: "User interface test content.",
   });
-  expect(response.status()).toBe(206);
+  await guest.getByRole("button", { name: "Stop", exact: true }).click();
+  await expect(
+    guest.getByRole("button", { name: "Listen to narration", exact: true }),
+  ).toBeVisible();
   await guestContext.close();
 });

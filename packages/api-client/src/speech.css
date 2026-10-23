@@ -1,0 +1,44 @@
+.speech-player {
+  width: 100%;
+  min-width: 0;
+  padding: 12px 0;
+}
+.speech-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.speech-controls label {
+  display: grid;
+  gap: 5px;
+  font-size: 0.85rem;
+  min-width: 0;
+  max-width: 100%;
+}
+.speech-controls select {
+  width: 100%;
+  max-width: 260px;
+  padding: 8px;
+  background: white;
+  color: #294735;
+  border: 1px solid #c7d4bf;
+  border-radius: 6px;
+}
+.speech-progress {
+  display: grid;
+  gap: 8px;
+  font-size: 0.85rem;
+  margin-top: 14px;
+}
+.speech-progress input {
+  width: 100%;
+  accent-color: #31523d;
+}
+.speech-player p {
+  line-height: 1.7;
+}
+.speech-player button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}

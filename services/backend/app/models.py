@@ -13,7 +13,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
 
@@ -33,7 +33,7 @@ class User(Base):
     name: Mapped[str] = mapped_column(String(120))
     password_hash: Mapped[str] = mapped_column(Text)
     role: Mapped[str] = mapped_column(String(20))
-    __table_args__ = (CheckConstraint("role IN ('editor','reviewer','admin')", name="valid_role"),)
+    __table_args__ = (CheckConstraint("role IN ('visitor','editor','reviewer','admin')", name="valid_role"),)
 
 
 class Session(Base):
@@ -50,6 +50,23 @@ class Category(Base):
     color: Mapped[str] = mapped_column(String(20), default="green")
 
 
+class Language(Base):
+    __tablename__ = "languages"
+    code: Mapped[str] = mapped_column(String(35), primary_key=True)
+    name: Mapped[str] = mapped_column(String(100))
+    native_name: Mapped[str] = mapped_column(String(100))
+    speech_locale: Mapped[str] = mapped_column(String(35))
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    required: Mapped[bool] = mapped_column(Boolean, default=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=100)
+    direction: Mapped[str] = mapped_column(String(3), default="ltr")
+    __table_args__ = (
+        CheckConstraint("direction IN ('ltr','rtl')", name="valid_language_direction"),
+        CheckConstraint("NOT required OR enabled", name="required_language_enabled"),
+        CheckConstraint("code != 'vi' OR (enabled AND required)", name="default_language_enabled"),
+    )
+
+
 class Poi(Base):
     __tablename__ = "pois"
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
@@ -61,7 +78,9 @@ class Poi(Base):
     status: Mapped[str] = mapped_column(String(20), default="draft", index=True)
     revision: Mapped[int] = mapped_column(Integer, default=1)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
-    translations: Mapped[dict] = mapped_column(JSON, default=dict)
+    translation_rows: Mapped[list["PoiTranslation"]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin"
+    )
     image_id: Mapped[str | None] = mapped_column(
         ForeignKey("media_assets.id", use_alter=True, name="fk_poi_image"), nullable=True
     )
@@ -77,6 +96,30 @@ class Poi(Base):
             "latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180", name="valid_coordinates"
         ),
     )
+
+    @property
+    def translations(self):
+        return {row.locale: {"title": row.title, "text": row.text} for row in self.translation_rows}
+
+    @translations.setter
+    def translations(self, values):
+        existing = {row.locale: row for row in self.translation_rows}
+        rows = []
+        for locale, value in values.items():
+            row = existing.get(locale) or PoiTranslation(locale=locale)
+            row.title = value.get("title", "")
+            row.text = value.get("text", "")
+            rows.append(row)
+        self.translation_rows = rows
+
+
+class PoiTranslation(Base):
+    __tablename__ = "poi_translations"
+    poi_id: Mapped[str] = mapped_column(ForeignKey("pois.id", ondelete="CASCADE"), primary_key=True)
+    locale: Mapped[str] = mapped_column(ForeignKey("languages.code"), primary_key=True)
+    title: Mapped[str] = mapped_column(String(180), default="")
+    text: Mapped[str] = mapped_column(Text, default="")
+    __table_args__ = (CheckConstraint("length(text) <= 30000", name="narration_text_length"),)
 
 
 class Media(Base):

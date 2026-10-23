@@ -33,6 +33,7 @@ import {
 import { api, ApiError } from "@quan1/api-client";
 import type {
   Category,
+  Language,
   Page,
   Poi,
   Status,
@@ -42,6 +43,7 @@ import type {
 import { Badge, Brand, Cover, Dialog, Empty, Loading } from "./components";
 import { messages, type UiLocale } from "./i18n";
 import { Editor } from "./Editor";
+import { LanguageManager } from "./Languages";
 
 type View = "overview" | "places" | "categories" | "languages" | "review";
 const views: View[] = [
@@ -63,7 +65,7 @@ const emptySummary: Summary = {
   published: 0,
   in_review: 0,
   draft: 0,
-  audio_ready: 0,
+  tts_ready: 0,
   translations_ready: 0,
 };
 
@@ -90,6 +92,9 @@ export function App() {
   );
   const [summary, setSummary] = useState(emptySummary);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [languages, setLanguages] = useState<Language[]>([]);
+  const enabledLanguages = languages.filter((language) => language.enabled);
+  const languageCodes = enabledLanguages.map((language) => language.code);
   const [data, setData] = useState<Page<Poi>>({
     items: [],
     total: 0,
@@ -126,7 +131,7 @@ export function App() {
   });
 
   useEffect(() => {
-    api<User>("/auth/me")
+    api<User>("/admin/auth/me")
       .then(setUser)
       .catch((e) => {
         if (!(e instanceof ApiError) || e.status !== 401)
@@ -197,12 +202,14 @@ export function App() {
       api<Page<Poi>>(`/admin/pois?${params}`),
       api<Summary>("/admin/summary"),
       api<Category[]>("/admin/categories"),
+      api<Language[]>("/admin/languages"),
     ])
-      .then(([list, stats, cats]) => {
+      .then(([list, stats, cats, langs]) => {
         if (!ignore) {
           setData(list);
           setSummary(stats);
           setCategories(cats);
+          setLanguages(langs);
         }
       })
       .catch((e) => {
@@ -577,7 +584,7 @@ export function App() {
                     v: "languages" as View,
                   },
                   {
-                    n: summary.total - summary.audio_ready,
+                    n: summary.total - summary.tts_ready,
                     text: t.audioTask,
                     icon: Headphones,
                     v: "languages" as View,
@@ -642,6 +649,14 @@ export function App() {
                 )}
               </section>
             </div>
+          )}
+          {view === "languages" && (
+            <LanguageManager
+              languages={languages}
+              locale={locale}
+              canEdit={user.role === "admin"}
+              onSaved={notify}
+            />
           )}
           {(view === "places" || view === "review" || view === "languages") && (
             <section className="panel places-panel" aria-label={t[view]}>
@@ -785,8 +800,9 @@ export function App() {
                     <thead>
                       <tr>
                         <th>{t.name}</th>
-                        <th>TIẾNG VIỆT</th>
-                        <th>ENGLISH</th>
+                        {enabledLanguages.map((language) => (
+                          <th key={language.code}>{language.native_name}</th>
+                        ))}
                         <th>{t.actions}</th>
                       </tr>
                     </thead>
@@ -809,34 +825,32 @@ export function App() {
                               </div>
                             </div>
                           </td>
-                          {(["vi", "en"] as const).map((lang) => (
+                          {languageCodes.map((lang) => (
                             <td key={lang}>
                               <div className="translation-cell">
                                 <span
                                   className={
-                                    p.translations[lang].text
+                                    p.translations[lang]?.text
                                       ? "ready"
                                       : "missing"
                                   }
                                 >
                                   <BookOpen size={14} />
-                                  {p.translations[lang].text
+                                  {p.translations[lang]?.text
                                     ? t.complete
                                     : t.missing}
                                 </span>
                                 <span
                                   className={
-                                    p.translations[lang].audio_valid
+                                    p.translations[lang]?.tts_ready
                                       ? "ready"
                                       : "missing"
                                   }
                                 >
                                   <Volume2 size={14} />
-                                  {p.translations[lang].audio_valid
+                                  {p.translations[lang]?.tts_ready
                                     ? t.validAudio
-                                    : p.translations[lang].audio_id
-                                      ? t.staleAudio
-                                      : t.needAudio}
+                                    : t.needAudio}
                                 </span>
                               </div>
                             </td>
@@ -903,8 +917,8 @@ export function App() {
                     <tbody>
                       {data.items.map((p) => {
                         const c = categoryFor(p.category_id);
-                        const audio = Object.values(p.translations).filter(
-                          (tr) => tr.audio_valid,
+                        const audio = languageCodes.filter(
+                          (code) => p.translations[code]?.tts_ready,
                         ).length;
                         return (
                           <tr key={p.id}>
@@ -932,35 +946,41 @@ export function App() {
                             </td>
                             <td>
                               <div className="language-chips">
-                                {(["vi", "en"] as const).map((l) => (
-                                  <span
-                                    key={l}
-                                    className={
-                                      p.translations[l].text
-                                        ? "available"
-                                        : "unavailable"
-                                    }
-                                    title={
-                                      p.translations[l].text
-                                        ? t.complete
-                                        : t.missing
-                                    }
-                                  >
-                                    {l.toUpperCase()}
-                                    {p.translations[l].text && (
-                                      <Check size={10} />
-                                    )}
-                                  </span>
-                                ))}
+                                {enabledLanguages
+                                  .filter(
+                                    (language) =>
+                                      language.required ||
+                                      p.translations[language.code]?.tts_ready,
+                                  )
+                                  .map(({ code: l }) => (
+                                    <span
+                                      key={l}
+                                      className={
+                                        p.translations[l]?.text
+                                          ? "available"
+                                          : "unavailable"
+                                      }
+                                      title={
+                                        p.translations[l]?.text
+                                          ? t.complete
+                                          : t.missing
+                                      }
+                                    >
+                                      {l.toUpperCase()}
+                                      {p.translations[l]?.text && (
+                                        <Check size={10} />
+                                      )}
+                                    </span>
+                                  ))}
                               </div>
                             </td>
                             <td>
                               <span
-                                className={`audio-count ${audio === 2 ? "ready" : ""}`}
-                                title={`${audio}/2 ${t.validAudio}`}
+                                className={`audio-count ${enabledLanguages.filter((language) => language.required).every((language) => p.translations[language.code]?.tts_ready) ? "ready" : ""}`}
+                                title={`${audio}/${languageCodes.length} ${t.validAudio}`}
                               >
                                 <Headphones size={15} />
-                                {audio}/2
+                                {audio}/{languageCodes.length}
                               </span>
                             </td>
                             <td>
@@ -1130,6 +1150,7 @@ export function App() {
         <Editor
           initial={editing}
           categories={categories}
+          languages={languages}
           user={user}
           locale={locale}
           onClose={() => setEditing(null)}
@@ -1323,7 +1344,7 @@ function Login({
     setError("");
     try {
       onLogin(
-        await api<User>("/auth/login", {
+        await api<User>("/admin/auth/login", {
           method: "POST",
           body: JSON.stringify({
             email: demo ? "admin@quan1.local" : email,

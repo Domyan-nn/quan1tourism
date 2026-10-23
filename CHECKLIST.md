@@ -7,22 +7,25 @@ Các trạng thái: **chưa làm**, **đang làm**, **đã làm chưa kiểm th�
 | Giai đoạn 0: kiểm tra repo và runtime | đã kiểm thử | Repo ban đầu trống, ghi tại docs/ARCHITECTURE.md |
 | Admin tiếng Việt/Anh, responsive, chữ lớn | đã kiểm thử | Desktop/Pixel 7 mô phỏng, lưu lựa chọn sau reload |
 | Danh sách, tìm kiếm không dấu, bộ lọc, phân trang | đã kiểm thử | Backend + thao tác tìm kiếm/empty/filter trên trình duyệt |
-| Tạo/sửa địa điểm, bản dịch, upload ảnh/audio | đã kiểm thử | 13 tests backend; UI song ngữ/audio có E2E |
+| Tạo/sửa địa điểm, bản dịch văn bản, upload ảnh | đã kiểm thử | Backend và luồng duyệt/xuất bản trên trình duyệt |
 | Gửi duyệt, duyệt, từ chối, xuất bản, lưu trữ | đã kiểm thử | Vai trò kiểm tra tại server |
 | Snapshot bất biến, sửa nháp giữ bản công khai | đã kiểm thử | Backend regression tests |
 | Lịch sử, khôi phục thành draft mới | đã kiểm thử | Không sửa snapshot phát hành |
-| Trang du khách và hai nguồn audio | đã kiểm thử | Guest thực sự phát audio, đổi ngôn ngữ, nhận Range 206 |
-| Alembic SQLite và seed 12 mẫu | đã kiểm thử | 13 tests gồm seed lặp, giữ thay đổi của biên tập viên |
+| Trang du khách và TTS từ văn bản | đã kiểm thử | Kiểm tra lời gọi Web Speech API bằng mock; cần nghe giọng thật trên thiết bị |
+| Alembic SQLite và seed 12 mẫu | đã kiểm thử | Migration 0003, giữ Unicode/tài khoản/phiên/ảnh/release, seed lặp |
+| Danh sách mở rộng 15 ngôn ngữ | đã kiểm thử | Admin thêm/sửa/bật/tắt, cấu hình bắt buộc; frontend đọc từ DB |
+| Bảng bản dịch chuẩn hóa | đã kiểm thử | Khóa chính địa điểm/ngôn ngữ, khóa ngoại, chỉ lưu văn bản |
 | Khả năng tiếp cận admin | đã kiểm thử | Axe WCAG 2 A/AA + 2.1 AA: login, danh sách, bước 1 editor; không phải chứng nhận toàn bộ sản phẩm |
 | Lệnh chạy local một terminal | đã kiểm thử | Ba URL trả 200; phím q dừng, xác nhận cả ba cổng đóng |
 | PostgreSQL/PostGIS | đã làm chưa kiểm thử | Driver + nhánh migration; chưa có kết nối được cấu hình |
-| Bản ghi âm thuyết minh mẫu có quyền | chưa làm | Không phát hành fixture âm thanh làm nội dung du lịch |
+| Nội dung mẫu | đã kiểm thử | Văn bản Việt/Anh, bản nháp; các ngôn ngữ khác cần biên tập bản dịch |
 | Danh mục: tạo/xem/xóa trống | đã kiểm thử | Backend phân quyền admin khi xóa; chưa có đổi tên |
 | Tour và sắp xếp điểm | chưa làm | Giai đoạn 2 |
 | Expo/mobile và AudioController chung | chưa làm | Giai đoạn 2 |
 | GPS engine/mô phỏng, geofence | chưa làm | Giai đoạn 3 |
 | PWA/offline và đồng bộ | chưa làm | Giai đoạn 3 |
-| Dịch/TTS tự động | bị chặn | Chưa cấu hình nhà cung cấp/credentials; nhập/upload thủ công dùng được |
+| TTS trình duyệt | đã kiểm thử | Không cần API key; giọng và kết nối phụ thuộc trình duyệt/hệ điều hành |
+| Dịch tự động và TTS máy chủ | chưa làm | Bản dịch thủ công, chưa tích hợp nhà cung cấp |
 | Worker Celery/Redis, S3 | chưa làm | Giai đoạn 4 |
 | Quản trị tài khoản/đa vai trò | chưa làm | Hiện chỉ có phiên đăng nhập và 3 vai trò nội dung |
 | Thống kê nghe và chống trùng events | chưa làm | Không hiển thị số lượt nghe giả |

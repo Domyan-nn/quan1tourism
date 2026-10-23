@@ -1,5 +1,25 @@
 # Báo cáo kiểm thử thực tế
 
+## Cập nhật 23/10/2026: đa ngôn ngữ và thuyết minh văn bản
+
+| Kiểm tra | Kết quả |
+| --- | --- |
+| Typecheck admin + web | Thành công |
+| Build admin + web | Thành công |
+| Backend `pytest -q` | **33 passed**, 18,64 giây; 1 cảnh báo Starlette/httpx |
+| Ruff `app tests migrations` | Thành công |
+| Playwright desktop + Pixel 7 mô phỏng | **20 passed**, exit code 0; chạy CLI tương đương script npm |
+| DB local sau migration `0003` | 3 tài khoản, 3 phiên, 12 địa điểm, 24 bản dịch văn bản, 15 ngôn ngữ |
+| SQLite integrity / foreign keys | `ok` / không có lỗi |
+
+Backend kiểm tra khởi tạo DB mới, nâng từ `0002`, giữ Unicode/tài khoản/phiên/ảnh/release, schema khớp model, migration chạy lặp, chuẩn hóa bản dịch, ngôn ngữ tùy chọn/bắt buộc, phân quyền thêm/sửa ngôn ngữ, bật/tắt giữ nội dung, không ghi tệp audio và không cho upload audio. Các ca tài khoản/phiên và luồng duyệt/xuất bản cũ vẫn qua.
+
+Trình duyệt kiểm tra editor → reviewer → guest bằng văn bản, chọn ngôn ngữ/giọng/tốc độ, tạm dừng/tiếp tục/dừng, chia bài dài thành đoạn, lỗi phát, thiếu giọng, rời bài dừng đọc và thêm ngôn ngữ xuất hiện ở editor/visitor. TTS dùng mock Web Speech API để xác minh tham số và trạng thái, **không xác nhận chất lượng giọng thật hoặc khả năng offline trên thiết bị**. Trong sandbox Windows, các máy chủ tạm được dừng theo PID sau khi 20 ca hoàn tất để kết thúc bước teardown của Playwright.
+
+DB local đã được sao lưu vào `.runtime/backups/quan1-before-0003-*.db` trước khi nâng cấp. Test backend/E2E dùng DB tạm riêng; kiểm tra DB local chỉ đọc sau migration. Các lựa chọn ngôn ngữ bổ sung chưa tự có bản dịch; giao diện quản trị/đăng nhập hỗ trợ Việt/Anh. PostgreSQL/PostGIS và giọng thật trên thiết bị chưa được xác minh trong lần cập nhật này.
+
+## Báo cáo lịch sử trước khi chuyển audio sang TTS
+
 Ngày: **22/10/2026**, múi giờ bàn giao Asia/Bangkok. Hệ điều hành Windows, Node 22.22.0 portable, Python 3.12.15 trong virtual environment, Edge Chromium đã cài trên máy. Đây là kiểm tra local, không phải load test hay chứng nhận khả năng tiếp cận.
 
 ## Kết quả

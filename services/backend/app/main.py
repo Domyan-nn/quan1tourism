@@ -9,7 +9,6 @@ from datetime import timedelta
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
-from mutagen import File as AudioFile
 from PIL import Image, UnidentifiedImageError
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
@@ -17,14 +16,16 @@ from sqlalchemy.orm import Session as DbSession
 from sqlalchemy.orm.exc import StaleDataError
 
 from .auth import COOKIE, COOKIE_SECURE, current_user, digest, optional_user, passwords, require
-from .content import audit, check_revision, get_poi, iso, serialize, touch, transition
+from .content import audit, check_revision, get_poi, iso, serialize, text_snapshot, touch, transition
+from .languages import get_language, language_data, languages
 from .db import MEDIA_ROOT, get_db
-from .models import Audit, Category, Media, Poi, Release, Session, User, now, uid
-from .schemas import ActionInput, CategoryInput, Login, PoiInput
+from .models import Audit, Category, Language, Media, Poi, Release, Session, User, now, uid
+from .schemas import ActionInput, CategoryInput, LanguageInput, Login, PoiInput, Register
 
 app = FastAPI(title="Saigon Stories API", version="0.1.0")
 editors = require("editor", "reviewer", "admin")
 login_attempts: dict[str, deque] = defaultdict(deque)
+registration_attempts: dict[str, deque] = defaultdict(deque)
 
 
 @app.middleware("http")
@@ -52,6 +53,11 @@ async def http_error(request, exc):
 @app.exception_handler(RequestValidationError)
 async def validation_error(request, exc):
     # Never echo login input or uploaded content back into errors/logs.
+    if request.url.path == "/api/v1/auth/register":
+        return JSONResponse(
+            {"detail": "Nhập họ tên, email hợp lệ và mật khẩu từ 8 đến 200 ký tự. Không thêm trường khác."},
+            status_code=422,
+        )
     return JSONResponse(
         {"detail": "Dữ liệu chưa hợp lệ. Kiểm tra các trường bắt buộc, độ dài và tọa độ."}, status_code=422
     )
@@ -79,6 +85,42 @@ def user_data(user):
     return {"id": user.id, "name": user.name, "email": user.email, "role": user.role}
 
 
+def start_session(user: User, request: Request, response: Response, db: DbSession):
+    old = request.cookies.get(COOKIE)
+    if old and (session := db.get(Session, digest(old))):
+        db.delete(session)
+    token = secrets.token_urlsafe(48)
+    db.add(Session(token_hash=digest(token), user_id=user.id, expires_at=now() + timedelta(hours=8)))
+    db.commit()
+    response.set_cookie(
+        COOKIE, token, httponly=True, secure=COOKIE_SECURE, samesite="strict", max_age=28800, path="/"
+    )
+    return user_data(user)
+
+
+@app.post("/api/v1/auth/register", status_code=201)
+def register(data: Register, request: Request, response: Response, db: DbSession = Depends(get_db)):
+    key = request.client.host if request.client else "local"
+    attempts = registration_attempts[key]
+    cutoff = time.monotonic() - 300
+    while attempts and attempts[0] < cutoff:
+        attempts.popleft()
+    if len(attempts) >= 10:
+        raise HTTPException(429, "Bạn đã thử đăng ký nhiều lần. Vui lòng thử lại sau 5 phút.")
+    attempts.append(time.monotonic())
+    if db.scalar(select(User.id).where(func.lower(User.email) == data.email)):
+        raise HTTPException(409, "Email này đã được sử dụng. Vui lòng đăng nhập hoặc dùng email khác.")
+    user = User(name=data.name, email=data.email, password_hash=passwords.hash(data.password), role="visitor")
+    db.add(user)
+    try:
+        db.flush()
+        return start_session(user, request, response, db)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, "Email này đã được sử dụng. Vui lòng đăng nhập hoặc dùng email khác.")
+
+
+@app.post("/api/v1/admin/auth/login")
 @app.post("/api/v1/auth/login")
 def login(data: Login, request: Request, response: Response, db: DbSession = Depends(get_db)):
     key = request.client.host if request.client else "local"
@@ -92,21 +134,19 @@ def login(data: Login, request: Request, response: Response, db: DbSession = Dep
     user = db.scalar(select(User).where(User.email == data.email.strip().lower()))
     if not user or not passwords.verify(data.password, user.password_hash):
         raise HTTPException(401, "Email hoặc mật khẩu chưa đúng.")
+    if request.url.path.startswith("/api/v1/admin/") and user.role == "visitor":
+        raise HTTPException(403, "Tài khoản du khách không có quyền truy cập trang quản trị.")
     attempts.clear()
-    old = request.cookies.get(COOKIE)
-    if old and (session := db.get(Session, digest(old))):
-        db.delete(session)
-    token = secrets.token_urlsafe(48)
-    db.add(Session(token_hash=digest(token), user_id=user.id, expires_at=now() + timedelta(hours=8)))
-    db.commit()
-    response.set_cookie(
-        COOKIE, token, httponly=True, secure=COOKIE_SECURE, samesite="strict", max_age=28800, path="/"
-    )
-    return user_data(user)
+    return start_session(user, request, response, db)
 
 
 @app.get("/api/v1/auth/me")
 def me(user: User = Depends(current_user)):
+    return user_data(user)
+
+
+@app.get("/api/v1/admin/auth/me")
+def admin_me(user: User = Depends(editors)):
     return user_data(user)
 
 
@@ -119,8 +159,53 @@ def logout(request: Request, response: Response, db: DbSession = Depends(get_db)
     response.delete_cookie(COOKIE, path="/")
 
 
+@app.get("/api/v1/languages")
+def public_languages(db: DbSession = Depends(get_db)):
+    return [language_data(language) for language in languages(db, enabled_only=True)]
+
+
+@app.get("/api/v1/admin/languages")
+def admin_languages(db: DbSession = Depends(get_db), user: User = Depends(editors)):
+    return [language_data(language) for language in languages(db)]
+
+
+def save_language(db, user, data, existing=None):
+    if (data.required and not data.enabled) or (data.code == "vi" and not (data.required and data.enabled)):
+        raise HTTPException(422, "Ngôn ngữ bắt buộc phải được bật. Tiếng Việt luôn là ngôn ngữ mặc định.")
+    if not existing and db.get(Language, data.code):
+        raise HTTPException(409, "Mã ngôn ngữ đã tồn tại.")
+    language = existing or Language(code=data.code)
+    for key, value in data.model_dump().items():
+        setattr(language, key, value)
+    db.add(language)
+    audit(db, user, None, "language_update" if existing else "language_create", data.code)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, "Mã ngôn ngữ đã tồn tại hoặc cấu hình không hợp lệ.")
+    return language_data(language)
+
+
+@app.post("/api/v1/admin/languages", status_code=201)
+def create_language(
+    data: LanguageInput, db: DbSession = Depends(get_db), user: User = Depends(require("admin"))
+):
+    return save_language(db, user, data)
+
+
+@app.put("/api/v1/admin/languages/{code}")
+def update_language(
+    code: str, data: LanguageInput, db: DbSession = Depends(get_db), user: User = Depends(require("admin"))
+):
+    language = get_language(db, code)
+    if data.code != code:
+        raise HTTPException(422, "Không thể đổi mã ngôn ngữ đã tạo. Hãy thêm ngôn ngữ mới.")
+    return save_language(db, user, data, language)
+
+
 @app.get("/api/v1/admin/categories")
-def categories(db: DbSession = Depends(get_db), user: User = Depends(current_user)):
+def categories(db: DbSession = Depends(get_db), user: User = Depends(editors)):
     return [
         {
             "id": c.id,
@@ -179,7 +264,7 @@ def list_pois(
     page: int = Query(1, ge=1),
     page_size: int = Query(8, ge=1, le=100),
     db: DbSession = Depends(get_db),
-    user: User = Depends(current_user),
+    user: User = Depends(editors),
 ):
     query = select(Poi)
     if status:
@@ -199,18 +284,18 @@ def list_pois(
 
 
 @app.get("/api/v1/admin/summary")
-def summary(db: DbSession = Depends(get_db), user: User = Depends(current_user)):
+def summary(db: DbSession = Depends(get_db), user: User = Depends(editors)):
     pois = list(db.scalars(select(Poi)))
     data = [serialize(p, db) for p in pois]
+    required = [language.code for language in languages(db, enabled_only=True) if language.required]
+    ready_count = sum(all(p["translations"][code]["tts_ready"] for code in required) for p in data)
     return {
         "total": len(data),
         "published": sum(p["has_published"] for p in data),
         "in_review": sum(p["status"] == "in_review" for p in data),
         "draft": sum(p["status"] == "draft" for p in data),
-        "audio_ready": sum(all(t["audio_valid"] for t in p["translations"].values()) for p in data),
-        "translations_ready": sum(
-            all(t["title"].strip() and t["text"].strip() for t in p["translations"].values()) for p in data
-        ),
+        "tts_ready": ready_count,
+        "translations_ready": ready_count,
     }
 
 
@@ -219,14 +304,10 @@ def apply_input(poi: Poi, data: PoiInput, db: DbSession):
         raise HTTPException(422, "Vui lòng nhập tên và chọn danh mục hợp lệ.")
     for key in ("name", "address", "category_id", "latitude", "longitude"):
         setattr(poi, key, getattr(data, key).strip() if key in ("name", "address") else getattr(data, key))
-    translations = {}
-    for locale in ("vi", "en"):
-        tr = data.translations.get(locale)
-        translations[locale] = {
-            "title": tr.title.strip() if tr else "",
-            "text": tr.text.strip() if tr else "",
-            "audio_id": (poi.translations or {}).get(locale, {}).get("audio_id"),
-        }
+    translations = dict(poi.translations or {})
+    for locale, tr in data.translations.items():
+        get_language(db, locale)
+        translations[locale] = {"title": tr.title.strip(), "text": tr.text.strip()}
     poi.translations = translations
 
 
@@ -242,7 +323,7 @@ def create_poi(data: PoiInput, db: DbSession = Depends(get_db), user: User = Dep
 
 
 @app.get("/api/v1/admin/pois/{poi_id}")
-def detail(poi_id: str, db: DbSession = Depends(get_db), user: User = Depends(current_user)):
+def detail(poi_id: str, db: DbSession = Depends(get_db), user: User = Depends(editors)):
     return serialize(get_poi(db, poi_id), db)
 
 
@@ -269,7 +350,7 @@ def action(poi_id: str, data: ActionInput, db: DbSession = Depends(get_db), user
 
 
 @app.get("/api/v1/admin/pois/{poi_id}/history")
-def history(poi_id: str, db: DbSession = Depends(get_db), user: User = Depends(current_user)):
+def history(poi_id: str, db: DbSession = Depends(get_db), user: User = Depends(editors)):
     get_poi(db, poi_id)
     return {
         "events": [
@@ -283,7 +364,12 @@ def history(poi_id: str, db: DbSession = Depends(get_db), user: User = Depends(c
             for a in db.scalars(select(Audit).where(Audit.poi_id == poi_id).order_by(Audit.id.desc()))
         ],
         "releases": [
-            {"id": r.id, "revision": r.revision, "snapshot": r.snapshot, "created_at": iso(r.created_at)}
+            {
+                "id": r.id,
+                "revision": r.revision,
+                "snapshot": text_snapshot(r.snapshot),
+                "created_at": iso(r.created_at),
+            }
             for r in db.scalars(
                 select(Release).where(Release.poi_id == poi_id).order_by(Release.revision.desc())
             )
@@ -295,9 +381,8 @@ def history(poi_id: str, db: DbSession = Depends(get_db), user: User = Depends(c
 async def upload(
     poi_id: str,
     file: UploadFile,
-    kind: str = Query(pattern="^(audio|image)$"),
+    kind: str = Query(pattern="^image$"),
     revision: int = Query(ge=1),
-    locale: str = Query("vi", pattern="^(vi|en)$"),
     db: DbSession = Depends(get_db),
     user: User = Depends(editors),
 ):
@@ -305,55 +390,26 @@ async def upload(
     check_revision(poi, revision)
     if poi.status in ("in_review", "archived"):
         raise HTTPException(409, "Nội dung cần ở trạng thái bản nháp để tải tệp.")
-    limit = (50 if kind == "audio" else 10) * 1024 * 1024
+    limit = 10 * 1024 * 1024
     data = bytearray()
     while chunk := await file.read(1024 * 1024):
         data.extend(chunk)
         if len(data) > limit:
-            raise HTTPException(413, f"Tệp quá lớn. Giới hạn {'50' if kind == 'audio' else '10'} MB.")
-    duration = None
-    text_hash = None
+            raise HTTPException(413, "Tệp quá lớn. Giới hạn 10 MB.")
     raw = bytes(data)
-    if kind == "image":
-        try:
-            with Image.open(io.BytesIO(raw)) as image:
-                ext, mime = {
-                    "JPEG": ("jpg", "image/jpeg"),
-                    "PNG": ("png", "image/png"),
-                    "WEBP": ("webp", "image/webp"),
-                }[image.format]
-                if image.width * image.height > 20_000_000:
-                    raise ValueError()
-                image.verify()
-        except (UnidentifiedImageError, OSError, ValueError, KeyError, Image.DecompressionBombError):
-            raise HTTPException(422, "Ảnh không hợp lệ. Chọn JPG, PNG hoặc WebP, tối đa 20 triệu điểm ảnh.")
-    else:
-        narration = poi.translations.get(locale, {}).get("text", "")
-        if not narration.strip():
-            raise HTTPException(422, "Hãy lưu bài thuyết minh trước khi tải audio.")
-        try:
-            audio = AudioFile(io.BytesIO(raw))
-            if audio is None or not audio.info.length or audio.info.length > 7200:
-                raise ValueError()
-            duration = round(audio.info.length, 2)
-            audio_type = type(audio).__name__
+    try:
+        with Image.open(io.BytesIO(raw)) as image:
             ext, mime = {
-                "WAVE": ("wav", "audio/wav"),
-                "MP3": ("mp3", "audio/mpeg"),
-                "OggVorbis": ("ogg", "audio/ogg"),
-                "OggOpus": ("ogg", "audio/ogg"),
-                "MP4": ("m4a", "audio/mp4"),
-            }[audio_type]
-            text_hash = digest(narration)
-        except Exception:
-            raise HTTPException(
-                422, "Audio không hợp lệ. Chọn MP3, WAV, OGG hoặc M4A có thời lượng dưới 2 giờ."
-            )
-    if (
-        file.content_type != mime
-        and not (mime == "audio/wav" and file.content_type in ("audio/x-wav", "audio/wave"))
-        and not (mime == "audio/mp4" and file.content_type == "audio/x-m4a")
-    ):
+                "JPEG": ("jpg", "image/jpeg"),
+                "PNG": ("png", "image/png"),
+                "WEBP": ("webp", "image/webp"),
+            }[image.format]
+            if image.width * image.height > 20_000_000:
+                raise ValueError()
+            image.verify()
+    except (UnidentifiedImageError, OSError, ValueError, KeyError, Image.DecompressionBombError):
+        raise HTTPException(422, "Ảnh không hợp lệ. Chọn JPG, PNG hoặc WebP, tối đa 20 triệu điểm ảnh.")
+    if file.content_type != mime:
         raise HTTPException(422, "Định dạng bên trong tệp không khớp loại tệp đã gửi.")
     media_id = uid()
     filename = f"{media_id}.{ext}"
@@ -363,25 +419,18 @@ async def upload(
         id=media_id,
         poi_id=poi.id,
         kind=kind,
-        locale=locale if kind == "audio" else None,
+        locale=None,
         filename=filename,
         mime=mime,
         size=len(raw),
         checksum=digest_bytes(raw),
-        duration=duration,
-        text_hash=text_hash,
     )
     db.add(media)
     db.flush()
-    if kind == "image":
-        poi.image_id = media_id
-    else:
-        translations = {k: dict(v) for k, v in poi.translations.items()}
-        translations[locale]["audio_id"] = media_id
-        poi.translations = translations
+    poi.image_id = media_id
     poi.status = "draft"
     touch(poi)
-    audit(db, user, poi, "upload", f"{kind}:{locale}")
+    audit(db, user, poi, "upload", "image")
     try:
         db.commit()
     except Exception:
@@ -400,7 +449,8 @@ def digest_bytes(value):
 @app.get("/api/v1/media/{media_id}")
 def media_file(media_id: str, request: Request, db: DbSession = Depends(get_db)):
     media = db.get(Media, media_id)
-    if not media or (not media.is_public and not optional_user(request, db)):
+    user = optional_user(request, db)
+    if not media or (not media.is_public and (not user or user.role == "visitor")):
         raise HTTPException(404, "Không tìm thấy tệp.")
     path = MEDIA_ROOT / media.filename
     if not path.is_file():
@@ -413,23 +463,26 @@ def media_file(media_id: str, request: Request, db: DbSession = Depends(get_db))
 
 
 @app.get("/api/v1/pois")
-def public_pois(locale: str = Query("vi", pattern="^(vi|en)$"), db: DbSession = Depends(get_db)):
+def public_pois(locale: str = Query("vi", max_length=35), db: DbSession = Depends(get_db)):
+    get_language(db, locale, enabled_only=True)
     return {
         "items": [
-            r.snapshot
+            text_snapshot(r.snapshot)
             for r in db.scalars(
                 select(Release).where(Release.is_current.is_(True)).order_by(Release.created_at.desc())
             )
-            if r.snapshot["translations"].get(locale, {}).get("audio_valid")
+            if text_snapshot(r.snapshot)["translations"].get(locale, {}).get("tts_ready")
         ]
     }
 
 
 @app.get("/api/v1/pois/{poi_id}")
-def public_poi(poi_id: str, locale: str = Query("vi", pattern="^(vi|en)$"), db: DbSession = Depends(get_db)):
+def public_poi(poi_id: str, locale: str = Query("vi", max_length=35), db: DbSession = Depends(get_db)):
+    get_language(db, locale, enabled_only=True)
     release = db.scalar(select(Release).where(Release.poi_id == poi_id, Release.is_current.is_(True)))
     if not release:
         raise HTTPException(404, "Địa điểm này chưa được xuất bản hoặc đã được lưu trữ.")
-    if not release.snapshot["translations"].get(locale, {}).get("audio_valid"):
+    snapshot = text_snapshot(release.snapshot)
+    if not snapshot["translations"].get(locale, {}).get("tts_ready"):
         raise HTTPException(404, "Chưa có thuyết minh cho ngôn ngữ này. Vui lòng chọn ngôn ngữ khác.")
-    return release.snapshot
+    return snapshot

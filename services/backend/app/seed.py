@@ -79,14 +79,12 @@ def seed():
                     "vi": {
                         "title": name,
                         "text": f"Chào mừng bạn đến với {name}. Hãy dành một chút thời gian quan sát không gian xung quanh và cảm nhận nhịp sống của Sài Gòn. Đây là bài thuyết minh mẫu để biên tập viên thay bằng nội dung đã được xác minh.",
-                        "audio_id": None,
                     },
                     "en": {
                         "title": en,
                         "text": f"Welcome to {en}. Take a moment to look around and enjoy the atmosphere of Saigon. This is sample narration for editors to replace with verified content."
                         if i < 8
                         else "",
-                        "audio_id": None,
                     },
                 },
             )

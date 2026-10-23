@@ -42,3 +42,4 @@ export async function api<T>(
 export function mediaUrl(id: string) {
   return `/api/v1/media/${encodeURIComponent(id)}`;
 }
+export { SpeechPlayer } from "./SpeechPlayer";

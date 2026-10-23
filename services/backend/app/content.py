@@ -4,10 +4,8 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .auth import digest
+from .languages import languages
 from .models import Audit, Media, Poi, Release, User, now
-
-LOCALES = ("vi", "en")
 
 
 def iso(value):
@@ -16,15 +14,14 @@ def iso(value):
 
 def serialize(poi: Poi, db: Session):
     translations = {}
-    for locale in LOCALES:
-        tr = poi.translations.get(locale, {})
-        audio = db.get(Media, tr.get("audio_id")) if tr.get("audio_id") else None
+    values = poi.translations
+    for language in languages(db):
+        locale = language.code
+        tr = values.get(locale, {})
         translations[locale] = {
             "title": tr.get("title", ""),
             "text": tr.get("text", ""),
-            "audio_id": audio.id if audio else None,
-            "audio_duration": audio.duration if audio else None,
-            "audio_valid": bool(audio and audio.text_hash == digest(tr.get("text", ""))),
+            "tts_ready": bool(tr.get("title", "").strip() and tr.get("text", "").strip()),
         }
     return {
         "id": poi.id,
@@ -70,12 +67,28 @@ def touch(poi: Poi):
 
 
 def ready(poi: Poi, db: Session):
-    for locale, name in (("vi", "Tiếng Việt"), ("en", "Tiếng Anh")):
-        tr = serialize(poi, db)["translations"][locale]
-        if not tr["title"].strip() or not tr["text"].strip():
-            raise HTTPException(422, f"{name}: cần có tiêu đề và bài thuyết minh trước khi gửi duyệt.")
-        if not tr["audio_valid"]:
-            raise HTTPException(422, f"{name}: hãy tải audio phù hợp với bài thuyết minh hiện tại.")
+    values = poi.translations
+    for language in languages(db, enabled_only=True):
+        tr = values.get(language.code, {})
+        title, text = tr.get("title", "").strip(), tr.get("text", "").strip()
+        if (language.required or title or text) and not (title and text):
+            raise HTTPException(
+                422, f"{language.native_name}: cần có tiêu đề và bài thuyết minh trước khi gửi duyệt."
+            )
+
+
+def text_snapshot(snapshot):
+    """Expose narration text for both new and historical releases, never legacy audio links."""
+    result = copy.deepcopy(snapshot)
+    result["translations"] = {
+        code: {
+            "title": tr.get("title", ""),
+            "text": tr.get("text", ""),
+            "tts_ready": bool(tr.get("title", "").strip() and tr.get("text", "").strip()),
+        }
+        for code, tr in snapshot.get("translations", {}).items()
+    }
+    return result
 
 
 def transition(db: Session, poi: Poi, user: User, data):
@@ -134,8 +147,7 @@ def transition(db: Session, poi: Poi, user: User, data):
         snapshot = serialize(poi, db)
         snapshot["has_published"] = True
         db.add(Release(poi_id=poi.id, revision=poi.revision, snapshot=snapshot))
-        ids = [tr.get("audio_id") for tr in poi.translations.values()] + [poi.image_id]
-        for media_id in filter(None, ids):
+        for media_id in filter(None, [poi.image_id]):
             media = db.get(Media, media_id)
             if media:
                 media.is_public = True

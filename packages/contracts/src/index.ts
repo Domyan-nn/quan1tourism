@@ -1,7 +1,17 @@
-export type Locale = "vi" | "en";
+export type Locale = string;
+export interface Language {
+  code: Locale;
+  name: string;
+  native_name: string;
+  speech_locale: string;
+  enabled: boolean;
+  required: boolean;
+  sort_order: number;
+  direction: "ltr" | "rtl";
+}
 export type Status =
   "draft" | "in_review" | "approved" | "published" | "archived";
-export type Role = "editor" | "reviewer" | "admin";
+export type Role = "visitor" | "editor" | "reviewer" | "admin";
 export interface User {
   id: string;
   name: string;
@@ -17,9 +27,7 @@ export interface Category {
 export interface Translation {
   title: string;
   text: string;
-  audio_id: string | null;
-  audio_duration: number | null;
-  audio_valid: boolean;
+  tts_ready: boolean;
 }
 export interface Poi {
   id: string;
@@ -62,6 +70,6 @@ export interface Summary {
   published: number;
   in_review: number;
   draft: number;
-  audio_ready: number;
+  tts_ready: number;
   translations_ready: number;
 }

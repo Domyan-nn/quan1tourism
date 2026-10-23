@@ -1,4 +1,4 @@
-import { StrictMode, useEffect, useRef, useState } from "react";
+import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   ArrowLeft,
@@ -9,32 +9,52 @@ import {
   Search,
   Volume2,
 } from "lucide-react";
-import { api, mediaUrl } from "@quan1/api-client";
-import type { Locale, Poi } from "@quan1/contracts";
+import { api, mediaUrl, SpeechPlayer } from "@quan1/api-client";
+import type { Language, Locale, Poi } from "@quan1/contracts";
+import { AuthControls } from "./Auth";
 import "@fontsource/be-vietnam-pro/400.css";
 import "@fontsource/be-vietnam-pro/500.css";
 import "@fontsource/be-vietnam-pro/600.css";
 import "./styles.css";
 
 function Visitor() {
-  const [locale, setLocale] = useState<Locale>(() =>
-    localStorage.getItem("visitor-locale") === "en" ? "en" : "vi",
+  const [locale, setLocale] = useState<Locale>(
+    () => localStorage.getItem("visitor-locale") || "vi",
   );
+  const [languages, setLanguages] = useState<Language[]>([]);
+  const [languageError, setLanguageError] = useState("");
   const [pois, setPois] = useState<Poi[]>([]);
   const [selected, setSelected] = useState<Poi | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [retry, setRetry] = useState(0);
-  const [rate, setRate] = useState(1);
-  const [audioError, setAudioError] = useState(false);
   const [online, setOnline] = useState(navigator.onLine);
-  const audioRef = useRef<HTMLAudioElement>(null);
   const vi = locale === "vi";
+  const language = languages.find((item) => item.code === locale);
   useEffect(() => {
-    document.documentElement.lang = locale;
+    let ignore = false;
+    api<Language[]>("/languages")
+      .then((items) => {
+        if (ignore) return;
+        setLanguages(items);
+        setLocale((current) =>
+          items.some((item) => item.code === current) ? current : "vi",
+        );
+        setLanguageError("");
+      })
+      .catch((error) => {
+        if (!ignore) setLanguageError(error.message);
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [retry]);
+  useEffect(() => {
+    if (!language) return;
+    document.documentElement.lang = locale === "vi" ? "vi" : "en";
     localStorage.setItem("visitor-locale", locale);
-  }, [locale]);
+  }, [locale, language?.code]);
   useEffect(() => {
     const update = () => setOnline(navigator.onLine);
     window.addEventListener("online", update);
@@ -45,11 +65,11 @@ function Visitor() {
     };
   }, []);
   useEffect(() => {
+    if (!language) return;
     let ignore = false;
     setLoading(true);
     setError("");
     setSelected(null);
-    setAudioError(false);
     const id = new URLSearchParams(location.search).get("poi");
     (id
       ? api<Poi>(`/pois/${encodeURIComponent(id)}?locale=${locale}`).then(
@@ -72,14 +92,10 @@ function Visitor() {
     return () => {
       ignore = true;
     };
-  }, [locale, retry]);
-  useEffect(() => {
-    setAudioError(false);
-    setRate(1);
-  }, [selected?.id, locale]);
+  }, [locale, language?.code, retry]);
   const narration = selected?.translations[locale];
   const list = pois.filter((p) =>
-    `${p.name} ${p.translations[locale].title}`
+    `${p.name} ${p.translations[locale]?.title ?? ""}`
       .toLocaleLowerCase()
       .includes(query.toLocaleLowerCase()),
   );
@@ -97,13 +113,28 @@ function Visitor() {
             saigon<strong>stories.</strong>
           </span>
         </a>
-        <button
-          className="language"
-          onClick={() => setLocale(vi ? "en" : "vi")}
-        >
-          <Globe2 size={16} />
-          {vi ? "Tiếng Việt" : "English"}
-        </button>
+        <div className="header-actions">
+          <label className="language">
+            <Globe2 size={16} />
+            <select
+              aria-label={vi ? "Ngôn ngữ thuyết minh" : "Narration language"}
+              value={locale}
+              disabled={!languages.length}
+              onChange={(event) => setLocale(event.target.value)}
+            >
+              {languages.length ? (
+                languages.map((item) => (
+                  <option key={item.code} value={item.code}>
+                    {item.native_name}
+                  </option>
+                ))
+              ) : (
+                <option value={locale}>{locale}</option>
+              )}
+            </select>
+          </label>
+          <AuthControls locale={locale} />
+        </div>
       </header>
       <main>
         {!online && (
@@ -113,7 +144,14 @@ function Visitor() {
               : "You are offline. This version needs a connection to load content."}
           </p>
         )}
-        {loading ? (
+        {languageError ? (
+          <div className="empty">
+            <p role="alert">{languageError}</p>
+            <button className="button" onClick={() => setRetry((n) => n + 1)}>
+              {vi ? "Thử lại" : "Try again"}
+            </button>
+          </div>
+        ) : loading ? (
           <div className="empty">
             {vi ? "Đang tìm những câu chuyện…" : "Finding stories…"}
           </div>
@@ -143,7 +181,9 @@ function Visitor() {
               )}
             </div>
             <span className="eyebrow">QUẬN 1 · SAIGON STORIES</span>
-            <h1>{narration?.title}</h1>
+            <h1 lang={locale} dir={language?.direction}>
+              {narration?.title}
+            </h1>
             <p className="address">
               <MapPin size={15} />
               {selected.address}
@@ -164,64 +204,29 @@ function Visitor() {
                 <strong>
                   {vi ? "Lắng nghe câu chuyện" : "Listen to the story"}
                 </strong>
-                <span>{vi ? "Tiếng Việt" : "English"}</span>
+                <span>{language?.native_name}</span>
               </div>
-              {narration?.audio_valid && narration.audio_id ? (
-                <>
-                  <audio
-                    key={`${selected.id}-${locale}-${narration.audio_id}`}
-                    ref={audioRef}
-                    controls
-                    preload="metadata"
-                    src={mediaUrl(narration.audio_id)}
-                    onError={() => setAudioError(true)}
-                    aria-label={`${selected.name} · ${vi ? "Tiếng Việt" : "English"}`}
-                  />
-                  <label className="speed">
-                    {vi ? "Tốc độ" : "Speed"}
-                    <select
-                      value={rate}
-                      onChange={(e) => {
-                        const r = Number(e.target.value);
-                        setRate(r);
-                        if (audioRef.current) audioRef.current.playbackRate = r;
-                      }}
-                    >
-                      {[0.75, 1, 1.25, 1.5, 2].map((r) => (
-                        <option key={r} value={r}>
-                          {r}×
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  {audioError && (
-                    <div className="notice" role="alert">
-                      {vi
-                        ? "Không tải được audio. Bạn vẫn có thể đọc bài thuyết minh."
-                        : "Audio could not be loaded. You can still read the story."}
-                      <button
-                        onClick={() => {
-                          setAudioError(false);
-                          audioRef.current?.load();
-                        }}
-                      >
-                        {vi ? "Thử lại" : "Retry"}
-                      </button>
-                    </div>
-                  )}
-                </>
+              {narration?.text && language ? (
+                <SpeechPlayer
+                  key={`${selected.id}-${locale}`}
+                  text={narration.text}
+                  speechLocale={language.speech_locale}
+                  uiLocale={vi ? "vi" : "en"}
+                />
               ) : (
                 <p className="notice">
                   {vi
-                    ? "Chưa có audio cho ngôn ngữ này. Hãy chọn ngôn ngữ khác."
-                    : "No audio in this language. Please choose another language."}
+                    ? "Chưa có bài thuyết minh cho ngôn ngữ này. Hãy chọn ngôn ngữ khác."
+                    : "No narration in this language. Please choose another language."}
                 </p>
               )}
             </section>
             <h2 className="story-heading">
               {vi ? "Câu chuyện của địa điểm" : "The story of this place"}
             </h2>
-            <p className="narration">{narration?.text}</p>
+            <p className="narration" lang={locale} dir={language?.direction}>
+              {narration?.text}
+            </p>
           </article>
         ) : (
           <>
@@ -303,7 +308,9 @@ function Visitor() {
                     </div>
                     <div>
                       <small>QUẬN 1</small>
-                      <h3>{p.translations[locale].title}</h3>
+                      <h3 lang={locale} dir={language?.direction}>
+                        {p.translations[locale]?.title}
+                      </h3>
                       <p>{p.address}</p>
                       <span>
                         <Headphones size={14} />

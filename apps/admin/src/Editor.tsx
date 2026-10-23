@@ -18,24 +18,25 @@ import {
   Save,
   Send,
   ShieldCheck,
-  Upload,
   Volume2,
 } from "lucide-react";
-import { api, mediaUrl } from "@quan1/api-client";
+import { api, SpeechPlayer } from "@quan1/api-client";
 import type {
   Audit,
   Category,
+  Language,
   Locale,
   Poi,
   Release,
   User,
 } from "@quan1/contracts";
-import { Badge, Cover, Dialog, Loading, pauseOtherAudio } from "./components";
+import { Badge, Cover, Dialog, Loading } from "./components";
 import { messages, type UiLocale } from "./i18n";
 
 type Props = {
   initial: Poi | "new";
   categories: Category[];
+  languages: Language[];
   user: User;
   locale: UiLocale;
   onClose: () => void;
@@ -60,6 +61,7 @@ const inputData = (p: Poi) => ({
 export function Editor({
   initial,
   categories,
+  languages,
   user,
   locale,
   onClose,
@@ -81,22 +83,12 @@ export function Editor({
           updated_at: new Date().toISOString(),
           image_id: null,
           cover: 0,
-          translations: {
-            vi: {
-              title: "",
-              text: "",
-              audio_id: null,
-              audio_duration: null,
-              audio_valid: false,
-            },
-            en: {
-              title: "",
-              text: "",
-              audio_id: null,
-              audio_duration: null,
-              audio_valid: false,
-            },
-          },
+          translations: Object.fromEntries(
+            languages.map((language) => [
+              language.code,
+              { title: "", text: "", tts_ready: false },
+            ]),
+          ),
           has_published: false,
           note: "",
           is_demo: false,
@@ -124,9 +116,24 @@ export function Editor({
     JSON.stringify(inputData(form)) !== JSON.stringify(inputData(saved));
   const locked = ["in_review", "archived"].includes(saved.status);
   const reviewer = user.role === "reviewer" || user.role === "admin";
-  const ready = Object.values(form.translations).every(
-    (tr) => tr.title.trim() && tr.text.trim() && tr.audio_valid,
+  const enabledLanguages = languages.filter((language) => language.enabled);
+  const languageCodes = enabledLanguages.map((language) => language.code);
+  const translation = (code: string) =>
+    form.translations[code] ?? { title: "", text: "", tts_ready: false };
+  const languageName = (code: string) =>
+    languages.find((language) => language.code === code)?.native_name ?? code;
+  const checklistLanguages = enabledLanguages.filter(
+    (language) =>
+      language.required ||
+      translation(language.code).title.trim() ||
+      translation(language.code).text.trim(),
   );
+  const ready =
+    checklistLanguages.length > 0 &&
+    checklistLanguages.every(
+      ({ code }) =>
+        translation(code).title.trim() && translation(code).text.trim(),
+    );
   const steps = [
     {
       icon: MapPin,
@@ -136,12 +143,12 @@ export function Editor({
     {
       icon: BookOpen,
       title: t.step2,
-      short: vi ? "Tiếng Việt & tiếng Anh" : "Vietnamese & English",
+      short: vi ? "Chọn ngôn ngữ & viết bài" : "Choose a language & write",
     },
     {
       icon: Headphones,
       title: t.step3,
-      short: vi ? "Tải lên & nghe thử" : "Upload & listen",
+      short: vi ? "Nghe thử từ văn bản" : "Listen to the text",
     },
     {
       icon: FileCheck2,
@@ -198,15 +205,12 @@ export function Editor({
       translations: {
         ...p.translations,
         [lang]: {
-          ...p.translations[lang],
+          ...(p.translations[lang] ?? {
+            title: "",
+            text: "",
+            tts_ready: false,
+          }),
           [key]: value,
-          ...(key === "text"
-            ? {
-                audio_valid:
-                  value.trim() === saved.translations[lang].text &&
-                  saved.translations[lang].audio_valid,
-              }
-            : {}),
         },
       },
     }));
@@ -261,11 +265,7 @@ export function Editor({
     }
     await save(n);
   }
-  async function upload(
-    file: File | undefined,
-    kind: "audio" | "image",
-    audioLocale: Locale = "vi",
-  ) {
+  async function upload(file: File | undefined, kind: "image") {
     if (!file) return;
     setBusy(true);
     setError("");
@@ -275,13 +275,13 @@ export function Editor({
       const body = new FormData();
       body.append("file", file);
       const result = await api<Poi>(
-        `/admin/pois/${p.id}/upload?kind=${kind}&locale=${audioLocale}&revision=${p.revision}`,
+        `/admin/pois/${p.id}/upload?kind=${kind}&revision=${p.revision}`,
         { method: "POST", body },
       );
       accept(result);
       setFeedback(
         vi
-          ? "Đã tải tệp. Hãy kiểm tra và nghe thử trước khi gửi duyệt."
+          ? "Đã tải ảnh. Hãy kiểm tra trước khi gửi duyệt."
           : "File uploaded. Check it before submitting for review.",
       );
     } catch (e) {
@@ -573,7 +573,7 @@ export function Editor({
                   role="tablist"
                   aria-label={t.language}
                 >
-                  {(["vi", "en"] as const).map((l) => (
+                  {languageCodes.map((l) => (
                     <button
                       key={l}
                       role="tab"
@@ -582,8 +582,12 @@ export function Editor({
                       onClick={() => setLang(l)}
                     >
                       <span className="lang-flag">{l.toUpperCase()}</span>
-                      {l === "vi" ? "Tiếng Việt" : "English"}
-                      {form.translations[l].text && <Check size={14} />}
+                      {languageName(l)}
+                      {languages.find((language) => language.code === l)
+                        ?.required
+                        ? " *"
+                        : ""}
+                      {translation(l).text && <Check size={14} />}
                     </button>
                   ))}
                 </div>
@@ -593,7 +597,12 @@ export function Editor({
                     <span className="required">*</span>
                     <input
                       className="input"
-                      value={form.translations[lang].title}
+                      value={translation(lang).title}
+                      lang={lang}
+                      dir={
+                        languages.find((language) => language.code === lang)
+                          ?.direction
+                      }
                       maxLength={180}
                       onChange={(e) =>
                         updateTranslation("title", e.target.value)
@@ -601,7 +610,7 @@ export function Editor({
                       placeholder={
                         lang === "vi"
                           ? "Tên địa điểm bằng tiếng Việt"
-                          : "Place name in English"
+                          : languageName(lang)
                       }
                     />
                   </label>
@@ -610,7 +619,12 @@ export function Editor({
                     <span className="required">*</span>
                     <textarea
                       className="input narration-input"
-                      value={form.translations[lang].text}
+                      value={translation(lang).text}
+                      lang={lang}
+                      dir={
+                        languages.find((language) => language.code === lang)
+                          ?.direction
+                      }
                       maxLength={30000}
                       onChange={(e) =>
                         updateTranslation("text", e.target.value)
@@ -624,8 +638,8 @@ export function Editor({
                   </label>
                   <div className="text-metadata">
                     <span>
-                      {form.translations[lang].text.length.toLocaleString()} /
-                      30.000 {vi ? "ký tự" : "characters"}
+                      {translation(lang).text.length.toLocaleString()} / 30.000{" "}
+                      {vi ? "ký tự" : "characters"}
                     </span>
                     <span>
                       <Clock3 size={13} />
@@ -633,23 +647,14 @@ export function Editor({
                       {Math.max(
                         1,
                         Math.ceil(
-                          form.translations[lang].text.trim().split(/\s+/)
-                            .length / 150,
+                          translation(lang).text.trim().split(/\s+/).length /
+                            150,
                         ),
                       )}{" "}
                       {vi ? "phút đọc" : "min read"}
                     </span>
                   </div>
                 </fieldset>
-                {!form.translations[lang].audio_valid &&
-                  form.translations[lang].audio_id && (
-                    <div className="notice warning compact">
-                      <CircleAlert size={17} />
-                      {vi
-                        ? "Văn bản đã thay đổi. Hãy tải lại audio đúng nội dung ở bước 3."
-                        : "The text has changed. Upload matching audio in step 3."}
-                    </div>
-                  )}
                 <div className="writing-tip">
                   <BookOpen size={18} />
                   <p>
@@ -670,109 +675,33 @@ export function Editor({
             )}
             {step === 2 && (
               <div className="editor-fields">
-                {(["vi", "en"] as const).map((l) => {
-                  const tr = form.translations[l];
-                  return (
-                    <section
-                      className={`audio-upload-card ${tr.audio_valid ? "complete" : ""}`}
-                      key={l}
-                    >
-                      <div className="audio-card-heading">
-                        <span className="lang-flag">{l.toUpperCase()}</span>
-                        <div>
-                          <h3>{l === "vi" ? "Tiếng Việt" : "English"}</h3>
-                          <p>
-                            {tr.title ||
-                              (vi ? "Chưa có tiêu đề" : "No title yet")}
-                          </p>
-                        </div>
-                        <span
-                          className={`mini-status ${tr.audio_valid ? "ready" : ""}`}
-                        >
-                          {tr.audio_valid ? (
-                            <>
-                              <Check size={13} />
-                              {vi ? "Sẵn sàng" : "Ready"}
-                            </>
-                          ) : (
-                            <>{tr.audio_id ? t.staleAudio : t.needAudio}</>
-                          )}
-                        </span>
-                      </div>
-                      {tr.audio_id && (
-                        <div className="audio-preview">
-                          <audio
-                            key={tr.audio_id}
-                            controls
-                            preload="none"
-                            src={mediaUrl(tr.audio_id)}
-                            onPlay={pauseOtherAudio}
-                            aria-label={`${vi ? "Nghe thử" : "Preview"} ${l === "vi" ? "Tiếng Việt" : "English"}`}
-                          />
-                          <span>
-                            {tr.audio_duration
-                              ? `${Math.floor(tr.audio_duration / 60)}:${Math.round(
-                                  tr.audio_duration % 60,
-                                )
-                                  .toString()
-                                  .padStart(2, "0")}`
-                              : ""}
-                          </span>
-                        </div>
-                      )}
-                      <label
-                        className={`drop-zone ${busy || locked ? "disabled" : ""}`}
-                      >
-                        <Upload size={23} />
-                        <strong>
-                          {tr.audio_id
-                            ? vi
-                              ? "Chọn bản ghi âm thay thế"
-                              : "Choose a replacement recording"
-                            : vi
-                              ? "Chọn bản ghi âm để tải lên"
-                              : "Choose an audio recording"}
-                        </strong>
-                        <span>
-                          MP3, WAV, OGG, M4A · {vi ? "Tối đa" : "Up to"} 50 MB
-                        </span>
-                        <input
-                          type="file"
-                          accept="audio/mpeg,audio/wav,audio/x-wav,audio/ogg,audio/mp4,.m4a"
-                          className="sr-only"
-                          disabled={busy || locked}
-                          onChange={(e) => {
-                            upload(e.target.files?.[0], "audio", l);
-                            e.target.value = "";
-                          }}
-                        />
-                      </label>
-                      {!tr.text && (
-                        <p className="field-hint warning-text">
-                          {vi
-                            ? "Hãy nhập và lưu bài thuyết minh ở bước 2 trước khi tải audio."
-                            : "Enter and save the narration in step 2 before uploading."}
-                        </p>
-                      )}
+                <p className="notice info">
+                  {vi
+                    ? "Giọng đọc tạo từ văn bản trên thiết bị. Ngôn ngữ có dấu * là bắt buộc; các bản dịch khác có thể bổ sung sau."
+                    : "Speech is generated from text on the device. Languages marked * are required; other translations can be added later."}
+                </p>
+                {enabledLanguages
+                  .filter(({ code }) => translation(code).text.trim())
+                  .map((language) => (
+                    <section className="tts-preview-card" key={language.code}>
+                      <h3>{language.native_name}</h3>
+                      <p>{translation(language.code).title}</p>
+                      <SpeechPlayer
+                        text={translation(language.code).text}
+                        speechLocale={language.speech_locale}
+                        uiLocale={locale}
+                      />
                     </section>
-                  );
-                })}
-                <div className="notice info compact">
-                  <Volume2 size={18} />
-                  <span>
-                    {vi
-                      ? "Mỗi bản ghi âm gắn với đúng ngôn ngữ và văn bản đã lưu. Hãy nghe thử toàn bộ trước khi gửi duyệt."
-                      : "Each recording is linked to its language and saved text. Listen to the full recording before submitting."}
-                  </span>
-                </div>
-                <div className="automation-note">
-                  <span>✧</span>
+                  ))}
+                {!enabledLanguages.some(({ code }) =>
+                  translation(code).text.trim(),
+                ) && (
                   <p>
                     {vi
-                      ? "Tạo giọng đọc tự động chưa được cấu hình. Hãy dùng bản ghi âm của bạn."
-                      : "Automatic voice generation is not configured. Upload your own recording."}
+                      ? "Hãy nhập bài thuyết minh ở bước 2 để nghe thử."
+                      : "Enter narration in step 2 to preview speech."}
                   </p>
-                </div>
+                )}
               </div>
             )}
             {step === 3 && (
@@ -806,28 +735,21 @@ export function Editor({
                     </p>
                   </div>
                 </div>
-                {(["vi", "en"] as const).map((l) => (
+                {checklistLanguages.map(({ code: l }) => (
                   <div className="checklist-language" key={l}>
                     <h3>
                       <span className="lang-flag">{l.toUpperCase()}</span>
-                      {l === "vi" ? "Tiếng Việt" : "English"}
+                      {languageName(l)}
                     </h3>
                     {[
                       {
                         ok:
-                          !!form.translations[l].title.trim() &&
-                          !!form.translations[l].text.trim(),
+                          !!translation(l).title.trim() &&
+                          !!translation(l).text.trim(),
                         label: vi
                           ? "Tiêu đề và bài thuyết minh"
                           : "Title and narration text",
                         target: 1,
-                      },
-                      {
-                        ok: form.translations[l].audio_valid,
-                        label: vi
-                          ? "Bản ghi âm khớp nội dung"
-                          : "Recording matches the text",
-                        target: 2,
                       },
                     ].map((item) => (
                       <div className="checklist-item" key={item.label}>
@@ -1088,34 +1010,32 @@ export function Editor({
           <div className="visitor-preview">
             <Cover poi={form} large />
             <div className="language-tabs">
-              {(["vi", "en"] as const).map((l) => (
+              {languageCodes.map((l) => (
                 <button
                   className={lang === l ? "active" : ""}
                   key={l}
                   onClick={() => setLang(l)}
                 >
-                  {l === "vi" ? "Tiếng Việt" : "English"}
+                  {languageName(l)}
                 </button>
               ))}
             </div>
-            <h2>{form.translations[lang].title || form.name}</h2>
+            <h2>{translation(lang).title || form.name}</h2>
             <p className="muted">
               <MapPin size={14} />
               {form.address}
             </p>
-            {form.translations[lang].audio_valid &&
-            form.translations[lang].audio_id ? (
-              <audio
-                controls
-                src={mediaUrl(form.translations[lang].audio_id!)}
-                onPlay={pauseOtherAudio}
-                aria-label={vi ? "Nghe thuyết minh" : "Listen to narration"}
-              />
-            ) : (
-              <div className="notice warning compact">{t.needAudio}</div>
-            )}
+            <SpeechPlayer
+              key={lang}
+              text={translation(lang).text}
+              speechLocale={
+                languages.find((language) => language.code === lang)
+                  ?.speech_locale ?? lang
+              }
+              uiLocale={locale}
+            />
             <p className="narration-text">
-              {form.translations[lang].text ||
+              {translation(lang).text ||
                 (vi
                   ? "Chưa có thuyết minh cho ngôn ngữ này."
                   : "No narration in this language yet.")}

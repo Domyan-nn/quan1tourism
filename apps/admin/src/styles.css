@@ -3538,3 +3538,14 @@ th {
     scroll-behavior: auto !important;
   }
 }
+.language-tabs { flex-wrap: wrap; }
+.language-manager { margin-bottom: 24px; padding: 22px; }
+.language-manager-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.language-registry { display: grid; grid-template-columns: repeat(auto-fit, minmax(185px, 1fr)); gap: 12px; margin-top: 18px; }
+.language-registry-item { display: grid; gap: 7px; padding: 14px; border: 1px solid #dce5d2; border-radius: 8px; }
+.language-registry-item span, .language-registry-item small { color: #536747; }
+.language-registry-item .text-button { justify-self: start; }
+.language-check { display: flex; gap: 8px; align-items: center; margin: 14px 0; }
+.language-form fieldset { border: 0; padding: 0; min-width: 0; }
+.tts-preview-card { border: 1px solid #dce5d2; border-radius: 10px; padding: 16px; }
+.audio-count.ready { color: #506a35; }

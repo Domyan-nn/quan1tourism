@@ -8,6 +8,12 @@ if context.is_offline_mode():
         context.run_migrations()
 else:
     with engine.connect() as connection:
+        # SQLite batch migrations rebuild tables referenced by existing sessions.
+        # Suspend FK enforcement only on this migration connection, then validate.
+        sqlite = connection.dialect.name == "sqlite"
+        if sqlite:
+            connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+            connection.commit()
         context.configure(
             connection=connection,
             target_metadata=Base.metadata,
@@ -15,3 +21,7 @@ else:
         )
         with context.begin_transaction():
             context.run_migrations()
+            if sqlite and connection.exec_driver_sql("PRAGMA foreign_key_check").fetchall():
+                raise RuntimeError("Migration failed foreign key validation")
+        if sqlite:
+            connection.exec_driver_sql("PRAGMA foreign_keys=ON")
