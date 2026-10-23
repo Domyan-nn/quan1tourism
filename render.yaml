@@ -3,6 +3,7 @@ services:
   - type: web
     name: quan1-tourism-api
     runtime: docker
+    autoDeployTrigger: "off"
     plan: starter
     healthCheckPath: /api/v1/health/ready
     disk:

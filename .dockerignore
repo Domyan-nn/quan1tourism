@@ -10,6 +10,10 @@ node_modules
 **/dist
 .env
 .env.*
+**/.env
+**/.env.*
+**/.dev.vars*
+.wrangler
 !.env.example
 playwright-report
 test-results

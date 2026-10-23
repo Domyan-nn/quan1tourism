@@ -115,7 +115,10 @@ Trong **Ngôn ngữ & thuyết minh**, quản trị viên thêm/sửa mã ngôn 
 ```powershell
 # Từ thư mục gốc
 npm run typecheck
-npm run build
+npm run test:edge
+npm run check:worker
+npm run build:site
+npx playwright install chromium
 npm run test:e2e
 
 # Từ services/backend
@@ -123,7 +126,16 @@ uv run pytest -q
 uv run ruff check app tests
 ```
 
-E2E mặc định dùng Edge đã cài trên Windows, hai viewport desktop và Pixel 7 mô phỏng. Trên máy khác, cài Edge hoặc đổi `channel` trong `playwright.config.mjs` và cài trình duyệt tương ứng. E2E tự khởi động API tại 8010 và frontend tại 5183/5184, dùng database và media tạm riêng, không ghi vào dữ liệu local. TTS được kiểm tra qua mock API trình duyệt; chất lượng giọng thật cần nghe trên thiết bị. Ảnh chụp ở `.runtime/screenshots`, báo cáo ở `playwright-report/`.
+E2E dùng Chromium do Playwright cài, desktop và Pixel 7 mô phỏng; CI cài bằng `npx playwright install --with-deps chromium`.
+Chạy build trước E2E: harness phục vụ **artifact đã build**, tự khởi động API tại 8010 và frontend tại 5183/5184,
+database/media tạm, bỏ qua cấu hình local. TTS/tile/ảnh ngoài mạng được mock; chất lượng giọng thật cần nghe trên thiết bị.
+Ảnh chụp ở `.runtime/screenshots`, báo cáo ở `playwright-report/`. Có thể dùng `E2E_PYTHON` để chọn venv QA riêng.
+
+Kiểm tra PostgreSQL riêng trên Windows có PostgreSQL18: `services/backend/.venv/Scripts/python.exe scripts/test_postgres.py`.
+Helper tạo cluster loopback tạm, không dùng DB local hiện có. CI có service PostgreSQL18 và chạy toàn bộ backend bằng `pytest --postgres`.
+Quality gate, secrets/variables, staging promotion và production manual release:
+[CI/CD](docs/CICD.md), [deployment runbook](docs/DEPLOYMENT-RUNBOOK.md), [rollback/restore](docs/ROLLBACK-RUNBOOK.md).
+Docker dùng dependency từ uv.lock, startup không tự migrate. Chưa deploy production trong nhiệm vụ hoàn thiện CI/CD.
 
 Xem [báo cáo kiểm thử](docs/TEST-REPORT.md), [kiến trúc/API](docs/ARCHITECTURE.md), [vận hành](docs/OPERATIONS.md) và [CHECKLIST.md](CHECKLIST.md) để biết phần đã xác minh và giới hạn còn lại.
 

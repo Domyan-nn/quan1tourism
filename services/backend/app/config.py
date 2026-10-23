@@ -9,6 +9,8 @@ LOCAL_ENV = RUNTIME / "local.env"
 
 
 def load_local_environment():
+    if os.getenv("QUAN1_IGNORE_LOCAL_ENV") == "1":
+        return
     if LOCAL_ENV.is_file():
         for line in LOCAL_ENV.read_text(encoding="utf-8-sig").splitlines():
             line = line.strip()

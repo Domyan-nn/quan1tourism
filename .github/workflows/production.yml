@@ -1,0 +1,49 @@
+name: Release production
+on:
+  workflow_dispatch:
+    inputs:
+      staging_run_id:
+        description: Successful Deploy staging run ID (same immutable bundle)
+        required: true
+        type: string
+      backup_reference:
+        description: Verified DB + media backup inventory ID, never a signed URL
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+jobs:
+  provenance:
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      sha: ${{ steps.gate.outputs.sha }}
+      ci_run_id: ${{ steps.gate.outputs.ci_run_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: staging-receipt
+          path: .runtime/staging
+          run-id: ${{ inputs.staging_run_id }}
+          github-token: ${{ github.token }}
+      - id: gate
+        run: python scripts/release_control.py gate-staging --run-id "$STAGING_RUN_ID"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STAGING_RUN_ID: ${{ inputs.staging_run_id }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+  deploy:
+    needs: provenance
+    uses: ./.github/workflows/deploy-environment.yml
+    with:
+      environment: production
+      release_sha: ${{ needs.provenance.outputs.sha }}
+      ci_run_id: ${{ needs.provenance.outputs.ci_run_id }}
+      staging_run_id: ${{ inputs.staging_run_id }}
+      backup_reference: ${{ inputs.backup_reference }}
+    secrets: inherit

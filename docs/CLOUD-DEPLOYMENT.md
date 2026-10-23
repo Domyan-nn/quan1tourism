@@ -49,11 +49,13 @@ Repo có `Dockerfile` build hai giao diện và chạy FastAPI cùng origin:
 - `/admin/`: quản trị; các màn hình dùng hash như `/admin/#places`.
 - `/api/v1/...`: API; `/docs`: tài liệu.
 
-Render dùng Dockerfile tại gốc repo. Lệnh khởi động nâng Alembic trước khi chạy Uvicorn trên `$PORT`.
+Render có thể dùng Dockerfile tại gốc repo hoặc giữ native Python service hiện có. Startup chỉ chạy Uvicorn trên `$PORT`;
+migration thuộc release job có advisory lock, không chạy trùng lúc startup/predeploy. Luồng CI/CD hiện hành và checklist
+dashboard nằm trong [DEPLOYMENT-RUNBOOK.md](DEPLOYMENT-RUNBOOK.md); tài liệu này không chứng minh setting cloud đã được xác minh.
 `render.yaml` là cấu hình tham khảo để áp dụng cho service hiện có, không tạo database mới. File này
 chọn gói Starter và disk trả phí cho ảnh upload; cần kiểm tra chi phí trước khi áp dụng Blueprint.
 Nếu giữ runtime Python hiện tại, dùng root `services/backend`, build `uv sync --frozen --no-dev`,
-start `uv run alembic upgrade head && uv run uvicorn app.main:app --host 0.0.0.0 --port $PORT`;
+start `uv run --frozen --no-dev uvicorn app.main:app --host 0.0.0.0 --port $PORT`;
 giao diện triển khai trên Cloudflare Pages như phần dưới.
 
 Các biến Render:
@@ -74,11 +76,14 @@ khóa trong Environment có ưu tiên và không thể đổi bằng API ghép n
 Ảnh Commons dùng URL gốc; ảnh upload cần disk bền vững để không mất khi deploy. Không dùng thư mục
 filesystem tạm của Render cho ảnh cần giữ lâu dài. Sau deploy, kiểm tra `/api/v1/health/ready`.
 
-Cloudflare đang liên kết GitHub bằng **Workers Builds**, Worker tên `quan1tourism`.
+Tài liệu trước ghi Cloudflare liên kết GitHub bằng **Workers Builds**, Worker tên `quan1tourism`.
+Chưa kiểm tra lại dashboard trong nhiệm vụ CI/CD. Trước bật CD phải ngắt/tắt auto-deploy Workers Builds và Render,
+để workflow là nguồn release duy nhất; không thay domain hoặc tạo lại Worker/service production.
 `wrangler.jsonc` build hai giao diện và phục vụ static assets; `/api/*` chạy qua Worker tới Render.
 Worker dùng origin API đã cấu hình sẵn, không cần thêm secret Cloudflare. Dashboard Worker:
 `https://dash.cloudflare.com/a47553d3f52e76f44080617e56c069fe/workers/services/view/quan1tourism/production`.
-Build từ gốc repo và deploy bằng `npx wrangler deploy` hoặc `npm run deploy:cloudflare`.
+Lệnh `npm run deploy:cloudflare` vẫn dành thao tác vận hành có phê duyệt; release chuẩn dùng artifact đã qua CI/staging,
+đúng commit và smoke qua origin công khai theo runbook. Không chạy lệnh deploy trong đợt hoàn thiện repo này.
 
 Cloudflare Pages (nếu dùng thay Workers) có thể dùng cùng artifact: build `npm ci && npm run build:site`, output
 `apps/web/dist`, root repository. Đặt `NODE_VERSION=22` và biến server

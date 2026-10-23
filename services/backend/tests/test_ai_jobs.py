@@ -80,6 +80,28 @@ def test_expired_worker_lease_is_reclaimed_and_old_results_rejected(env, upstrea
     assert result["status"] == "failed" and "secret" not in result["error"]
 
 
+def test_retry_budget_and_queue_timeout_do_not_affect_public_readiness(env, upstream, monkeypatch):  # noqa: F811
+    client, factory, _ = env
+    monkeypatch.setenv("AI_MODE", "worker")
+    monkeypatch.setenv("AI_WORKER_TOKEN", TOKEN)
+    login(client, "admin")
+    job_id = enqueue(client)
+    for _ in range(3):
+        assert client.post("/api/v1/worker/claim", headers=WORKER, json={}).json()["job"]["id"] == job_id
+        with factory() as db:
+            db.get(AiJob, job_id).lease_until = now() - timedelta(seconds=1)
+            db.commit()
+    assert client.post("/api/v1/worker/claim", headers=WORKER, json={}).json()["job"] is None
+    assert client.get(f"/api/v1/admin/ai/jobs/{job_id}").json()["status"] == "failed"
+    expired = enqueue(client)
+    with factory() as db:
+        db.get(AiJob, expired).created_at = now() - timedelta(hours=25)
+        db.commit()
+    assert client.post("/api/v1/worker/claim", headers=WORKER, json={}).json()["job"] is None
+    assert client.get(f"/api/v1/admin/ai/jobs/{expired}").json()["status"] == "failed"
+    assert client.get("/api/v1/health/ready").status_code == 200
+
+
 def test_duplicate_name_is_checked_on_create_update_and_before_ai(env, upstream, monkeypatch):  # noqa: F811
     client, _, _ = env
     login(client, "admin")

@@ -1,4 +1,5 @@
-import { test, expect, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { mockSpeech } from "./speech";
 
 async function openStory(page: Page, text: string) {
@@ -78,7 +79,8 @@ test("admin adds a language and it appears in the editor and visitor selector", 
   await page
     .getByRole("button", { name: "Trải nghiệm tài khoản demo", exact: true })
     .click();
-  await page.goto("/#languages");
+  await expect(page.getByRole("heading", { name: "Địa điểm", exact: true })).toBeVisible();
+  await page.goto("/admin/#languages");
   await page
     .getByRole("button", { name: "Thêm ngôn ngữ", exact: true })
     .click();

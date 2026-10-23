@@ -1,5 +1,6 @@
 from collections import defaultdict, deque
-from datetime import timedelta
+from datetime import timedelta, timezone
+from types import SimpleNamespace
 from pathlib import Path
 
 import pytest
@@ -26,6 +27,14 @@ def payload(**changes):
         "email": "  Visitor@Example.com ",
         "password": "Visitor!2026",
     } | changes
+
+
+@pytest.mark.parametrize("offset", [-7, 0, 7])
+def test_session_expiry_respects_database_timezone(offset):
+    from app.auth import optional_user
+    session = SimpleNamespace(expires_at=(now() - timedelta(seconds=1)).astimezone(timezone(timedelta(hours=offset))))
+    db = SimpleNamespace(get=lambda *args: session)
+    assert optional_user(SimpleNamespace(cookies={COOKIE: "synthetic"}), db) is None
 
 
 def test_registration_login_and_logout_persist_securely(env):

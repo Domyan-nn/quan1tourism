@@ -1,6 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 import { resolve } from "node:path";
-const python = resolve(
+import { readFileSync } from "node:fs";
+const release = JSON.parse(readFileSync("apps/web/dist/release.json", "utf8")).release;
+const python = process.env.E2E_PYTHON || resolve(
   process.platform === "win32"
     ? "services/backend/.venv/Scripts/python.exe"
     : "services/backend/.venv/bin/python",
@@ -22,7 +24,6 @@ export default defineConfig({
       name: "desktop",
       use: {
         browserName: "chromium",
-        channel: "msedge",
         viewport: { width: 1440, height: 1100 },
       },
     },
@@ -31,13 +32,13 @@ export default defineConfig({
       use: {
         ...devices["Pixel 7"],
         browserName: "chromium",
-        channel: "msedge",
       },
     },
   ],
   webServer: [
     {
       command: `"${python}" scripts/e2e_backend.py`,
+      env: { RELEASE_SHA: release },
       url: "http://127.0.0.1:8010/api/v1/health/ready",
       reuseExistingServer: false,
       timeout: 60000,
@@ -45,14 +46,15 @@ export default defineConfig({
       stderr: "pipe",
     },
     {
-      command: "npm run dev --workspace @quan1/admin -- --mode e2e --port 5183",
+      command: "node scripts/serve-built.mjs --admin --port 5183",
       url: "http://127.0.0.1:5183",
       reuseExistingServer: false,
     },
     {
-      command: "npm run dev --workspace @quan1/web -- --mode e2e --port 5184",
+      command: "node scripts/serve-built.mjs --port 5184",
       url: "http://127.0.0.1:5184",
       reuseExistingServer: false,
     },
   ],
+  globalSetup: "./tests/e2e/setup.mjs",
 });

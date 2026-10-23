@@ -10,7 +10,12 @@ export const onRequest = async (context: {request: Request; env: Env}): Promise<
   target.host = origin.host;
   const request = new Request(target, context.request);
   request.headers.delete("host");
-  const upstream = await fetch(request, {redirect: "manual"});
+  let upstream: Response;
+  try {
+    upstream = await fetch(request, {redirect: "manual", signal: AbortSignal.timeout(30000)});
+  } catch {
+    return new Response("API unavailable", {status: 502, headers: {"Cache-Control": "no-store"}});
+  }
   const response = new Response(upstream.body, upstream);
   response.headers.set("Cache-Control", "no-store");
   return response;

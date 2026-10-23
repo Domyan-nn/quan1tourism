@@ -1,0 +1,133 @@
+name: Deploy one environment
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+      release_sha:
+        required: true
+        type: string
+      ci_run_id:
+        required: true
+        type: string
+      staging_run_id:
+        default: ''
+        type: string
+      backup_reference:
+        default: ''
+        type: string
+permissions:
+  contents: read
+  actions: read
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    environment: ${{ inputs.environment }}
+    concurrency:
+      group: deploy-${{ inputs.environment }}
+      cancel-in-progress: false
+    env:
+      QUAN1_IGNORE_LOCAL_ENV: '1'
+      RELEASE_SHA: ${{ inputs.release_sha }}
+      CI_RUN_ID: ${{ inputs.ci_run_id }}
+      STAGING_RUN_ID: ${{ inputs.staging_run_id || github.run_id }}
+      BACKUP_REFERENCE: ${{ inputs.backup_reference || vars.BACKUP_REFERENCE }}
+      MIGRATION_APPROVED: ${{ vars.MIGRATION_APPROVED }}
+      RELEASE_ENVIRONMENT: ${{ inputs.environment }}
+      BACKEND_ORIGIN: ${{ vars.BACKEND_ORIGIN }}
+      PUBLIC_ORIGIN: ${{ vars.PUBLIC_ORIGIN }}
+      RENDER_SERVICE_ID: ${{ vars.RENDER_SERVICE_ID }}
+      CLOUDFLARE_WORKER_NAME: ${{ vars.CLOUDFLARE_WORKER_NAME }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_CONFIG_REVIEWED: ${{ vars.CLOUDFLARE_CONFIG_REVIEWED }}
+      CLOUDFLARE_ROUTES_JSON: ${{ vars.CLOUDFLARE_ROUTES_JSON }}
+      CLOUDFLARE_WORKERS_DEV: ${{ vars.CLOUDFLARE_WORKERS_DEV }}
+      DATABASE_IDENTITY: ${{ vars.DATABASE_IDENTITY }}
+      EXPECTED_MEDIA_ROOT: ${{ vars.EXPECTED_MEDIA_ROOT }}
+      PRODUCTION_DATABASE_IDENTITY: ${{ vars.PRODUCTION_DATABASE_IDENTITY }}
+      PRODUCTION_RENDER_SERVICE_ID: ${{ vars.PRODUCTION_RENDER_SERVICE_ID }}
+      PRODUCTION_WORKER_NAME: ${{ vars.PRODUCTION_WORKER_NAME }}
+      PRODUCTION_BACKEND_ORIGIN: ${{ vars.PRODUCTION_BACKEND_ORIGIN }}
+      PRODUCTION_PUBLIC_ORIGIN: ${{ vars.PRODUCTION_PUBLIC_ORIGIN }}
+      WRANGLER_SEND_METRICS: 'false'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.13.4'
+          python-version: '3.12'
+      - run: npm ci
+      - run: uv sync --frozen
+        working-directory: services/backend
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-${{ inputs.release_sha }}
+          path: .runtime/release
+          run-id: ${{ inputs.ci_run_id }}
+          github-token: ${{ github.token }}
+      - if: inputs.environment == 'production'
+        uses: actions/download-artifact@v4
+        with:
+          name: staging-receipt
+          path: .runtime/staging
+          run-id: ${{ inputs.staging_run_id }}
+          github-token: ${{ github.token }}
+      - run: node scripts/release-bundle.mjs verify
+      - name: Verify environment isolation and promotion evidence
+        run: uv run --project services/backend --frozen python scripts/release_preflight.py
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      - run: node scripts/release-bundle.mjs config
+      - name: Inspect Render and record previous Worker version
+        run: |
+          uv run --project services/backend --frozen python scripts/release_control.py render-preflight
+          python scripts/release_control.py worker-state --output .runtime/worker-before.json
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      - name: Migrate once under PostgreSQL advisory lock
+        run: uv run --project services/backend --frozen python scripts/release_migrate.py --output .runtime/migration.json
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      - name: Deploy exact backend commit and wait for live
+        run: python scripts/release_control.py render-deploy
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+      - name: Verify backend identity through its public origin
+        run: python scripts/smoke.py --origin "$BACKEND_ORIGIN" --release "$RELEASE_SHA" --no-tiles --api-only
+      - name: Deploy the verified Worker and frontend bundle
+        run: npx wrangler deploy --config .runtime/deploy-wrangler.json --no-bundle
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      - name: Smoke public origin and record successful release
+        run: |
+          python scripts/smoke.py --origin "$PUBLIC_ORIGIN" --release "$RELEASE_SHA" --worker
+          python scripts/release_control.py worker-state --output .runtime/worker-after.json
+          python scripts/release_control.py receipt --environment "$RELEASE_ENVIRONMENT"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.environment }}-receipt
+          path: .runtime/receipt.json
+          retention-days: 90
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: ${{ inputs.environment }}-reconcile-${{ github.run_id }}
+          path: |
+            .runtime/render-before.json
+            .runtime/render-deploy.json
+            .runtime/migration.json
+            .runtime/worker-before.json
+          retention-days: 30

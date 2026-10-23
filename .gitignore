@@ -4,6 +4,8 @@ dist/
 .tools/
 .runtime/
 .env
+.env.*
+!.env.example
 __pycache__/
 .pytest_cache/
 .ruff_cache/
@@ -13,3 +15,4 @@ playwright-report/
 test-results/
 .wrangler/
 .dev.vars
+.dev.vars.*

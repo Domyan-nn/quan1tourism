@@ -1,4 +1,5 @@
-import { test, expect, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { test, expect, offline } from "./fixtures";
 import AxeBuilder from "@axe-core/playwright";
 import { mockSpeech } from "./speech";
 
@@ -185,6 +186,7 @@ test("admin publishes text and visitor listens in both languages with TTS", asyn
     fullPage: true,
   });
   const guestContext = await browser.newContext();
+  await offline(guestContext);
   const guest = await guestContext.newPage();
   await mockSpeech(guest);
   await guest.goto("http://127.0.0.1:5184");

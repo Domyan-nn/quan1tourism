@@ -11,11 +11,11 @@ ROOT = Path(__file__).resolve().parents[1]
 BACKEND = ROOT / "services" / "backend"
 sys.path.insert(0, str(BACKEND))
 
-import psycopg
-from app.config import LOCAL_ENV, RUNTIME
-from psycopg import sql
-from sqlalchemy import MetaData, create_engine, func, select, text
-from sqlalchemy.engine import make_url
+import psycopg  # noqa: E402 -- backend modules are resolved after the explicit path above
+from app.config import LOCAL_ENV, RUNTIME  # noqa: E402
+from psycopg import sql  # noqa: E402
+from sqlalchemy import MetaData, create_engine, func, select, text  # noqa: E402
+from sqlalchemy.engine import make_url  # noqa: E402
 
 
 def save_configuration(url):

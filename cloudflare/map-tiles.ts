@@ -14,6 +14,7 @@ export async function mapTile(request: Request): Promise<Response> {
       },
       // Cloudflare honors the provider's cache lifetime; do not forward browser no-cache headers.
       cf: { cacheEverything: true },
+      signal: AbortSignal.timeout(10000),
     } as RequestInit);
     if (!upstream.ok) return new Response("Map tiles unavailable", { status: 502 });
     const headers = new Headers(upstream.headers);

@@ -14,6 +14,13 @@ if __name__ == "__main__":
     with tempfile.TemporaryDirectory(prefix="quan1-e2e-") as directory:
         os.environ["DATABASE_URL"] = f"sqlite:///{Path(directory).as_posix()}/test.db"
         os.environ["MEDIA_ROOT"] = str(Path(directory) / "media")
+        os.environ["QUAN1_IGNORE_LOCAL_ENV"] = "1"
+        os.environ["APP_ENV"] = "test"
+        os.environ["COOKIE_SECURE"] = "false"
+        os.environ["AI_MODE"] = "worker"
+        os.environ["AI_WORKER_TOKEN"] = "isolated-e2e-worker-credential-only"
+        os.environ.pop("RENDER", None)
+        os.environ.pop("STATIC_ROOT", None)
         import uvicorn
         from alembic import command
         from alembic.config import Config

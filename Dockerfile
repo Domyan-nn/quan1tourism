@@ -10,13 +10,19 @@ COPY apps ./apps
 COPY packages ./packages
 COPY tsconfig.json ./
 COPY scripts/build-site.mjs scripts/build-site.mjs
+ARG RELEASE_SHA
+ARG RENDER_GIT_COMMIT
 RUN npm run build:site
 
 FROM python:3.12-slim
+COPY --from=ghcr.io/astral-sh/uv:0.13.4 /uv /uvx /bin/
 WORKDIR /app
-COPY services/backend /app/services/backend
-RUN python -c "import subprocess,sys,tomllib; p=tomllib.load(open('/app/services/backend/pyproject.toml','rb')); subprocess.check_call([sys.executable,'-m','pip','install','--no-cache-dir',*p['project']['dependencies']])"
-COPY --from=frontend /build/apps/web/dist /app/static
-ENV APP_ENV=production AI_MODE=worker COOKIE_SECURE=true STATIC_ROOT=/app/static
+COPY services/backend/pyproject.toml services/backend/uv.lock /app/services/backend/
 WORKDIR /app/services/backend
-CMD ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+RUN uv sync --frozen --no-dev --no-cache --no-install-project
+COPY services/backend /app/services/backend
+COPY --from=frontend /build/apps/web/dist /app/static
+COPY scripts/release_migrate.py /app/scripts/release_migrate.py
+ENV PATH="/app/services/backend/.venv/bin:$PATH"
+ENV APP_ENV=production AI_MODE=worker COOKIE_SECURE=true STATIC_ROOT=/app/static
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

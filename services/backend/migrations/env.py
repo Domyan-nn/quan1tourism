@@ -7,7 +7,10 @@ if context.is_offline_mode():
     with context.begin_transaction():
         context.run_migrations()
 else:
-    with engine.connect() as connection:
+    from contextlib import nullcontext
+
+    supplied = context.config.attributes.get("connection")
+    with (nullcontext(supplied) if supplied is not None else engine.connect()) as connection:
         # SQLite batch migrations rebuild tables referenced by existing sessions.
         # Suspend FK enforcement only on this migration connection, then validate.
         sqlite = connection.dialect.name == "sqlite"

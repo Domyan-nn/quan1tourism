@@ -21,7 +21,12 @@ def digest(value: str):
 def optional_user(request: Request, db: DbSession) -> User | None:
     token = request.cookies.get(COOKIE)
     session = db.get(Session, digest(token)) if token else None
-    if not session or session.expires_at.replace(tzinfo=timezone.utc) <= datetime.now(timezone.utc):
+    if not session:
+        return None
+    expires_at = session.expires_at
+    if expires_at.tzinfo is None:  # SQLite returns naive UTC; PostgreSQL preserves its session timezone.
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at <= datetime.now(timezone.utc):
         return None
     return db.get(User, session.user_id)
 

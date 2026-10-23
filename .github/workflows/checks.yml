@@ -1,13 +1,90 @@
-name: Local application checks
+name: Quality checks
 on:
   push:
   pull_request:
 permissions:
   contents: read
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  QUAN1_IGNORE_LOCAL_ENV: '1'
 jobs:
-  checks:
-    runs-on: windows-latest
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.13.4'
+          python-version: '3.12'
+      - run: uv sync --frozen
+        working-directory: services/backend
+      - run: uv run --frozen ruff check --config pyproject.toml app tests migrations ../../scripts
+        working-directory: services/backend
+      - run: uv run --frozen pytest -q
+        working-directory: services/backend
+  frontend:
+    name: Frontend and edge
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      RELEASE_SHA: ${{ github.sha }}
+      WRANGLER_SEND_METRICS: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: node --test tests/cloudflare-map-tiles.test.mjs tests/cloudflare-proxy.test.mjs
+      - run: npm run check:worker
+      - run: node --test tests/cloudflare-worker.test.mjs
+      - run: node scripts/release-bundle.mjs pack
+      - run: node scripts/release-bundle.mjs verify
+      - uses: actions/upload-artifact@v4
+        with:
+          name: candidate-${{ github.sha }}
+          path: .runtime/release/
+          retention-days: 14
+          if-no-files-found: error
+  postgres:
+    name: PostgreSQL integration
+    runs-on: ubuntu-latest
     timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: disposable-ci-only
+          POSTGRES_DB: quan1_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d quan1_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      TEST_POSTGRES_URL: postgresql+psycopg://ci:disposable-ci-only@127.0.0.1:5432/quan1_ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.13.4'
+          python-version: '3.12'
+      - run: uv sync --frozen
+        working-directory: services/backend
+      - run: uv run --frozen pytest --postgres -q -s
+        working-directory: services/backend
+  browser:
+    name: Built artifact E2E
+    needs: frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -16,23 +93,109 @@ jobs:
           cache: npm
       - uses: astral-sh/setup-uv@v6
         with:
+          version: '0.13.4'
           python-version: '3.12'
       - run: npm ci
       - run: uv sync --frozen
         working-directory: services/backend
-      - run: uv run ruff check --config pyproject.toml app tests migrations ../../scripts/ollama_worker.py ../../scripts/configure_ai_worker.py ../../scripts/migrate_cloud.py ../../scripts/check_connections.py
-        working-directory: services/backend
-      - run: uv run pytest -q
-        working-directory: services/backend
-      - run: npm run typecheck
-      - run: npm run build:site
+      - uses: actions/download-artifact@v4
+        with:
+          name: candidate-${{ github.sha }}
+          path: .runtime/release
+      - run: node scripts/release-bundle.mjs verify
+        env:
+          RELEASE_SHA: ${{ github.sha }}
+      - run: mkdir -p apps/web/dist && cp -a .runtime/release/site/. apps/web/dist/
+      - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: failure()
         with:
-          name: browser-test-report
+          name: synthetic-browser-failure-${{ github.sha }}
           path: |
             playwright-report/
             test-results/
             .runtime/screenshots/
           retention-days: 7
+  docker:
+    name: Docker verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build --build-arg RELEASE_SHA=${{ github.sha }} --tag quan1-ci:${{ github.sha }} .
+      - name: Verify locked production runtime and compiled routes
+        run: |
+          mkdir -p .runtime/docker-test
+          chmod 777 .runtime/docker-test
+          docker run -d --name quan1-ci -p 127.0.0.1:8011:8000 \
+            -e QUAN1_IGNORE_LOCAL_ENV=1 -e APP_ENV=test -e COOKIE_SECURE=false \
+            -e RELEASE_SHA=${{ github.sha }} -e DATABASE_URL=sqlite:////test/ci.db \
+            -e MEDIA_ROOT=/test/media -v "$PWD/.runtime/docker-test:/test" \
+            quan1-ci:${{ github.sha }} sh -c 'alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000'
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8011/api/v1/health/ready >/dev/null; then break; fi
+            sleep 2
+          done
+          python scripts/smoke.py --origin http://127.0.0.1:8011 --release ${{ github.sha }} --no-tiles --allow-empty
+          docker run --rm -e QUAN1_IGNORE_LOCAL_ENV=1 -e DATABASE_URL=sqlite:// -e APP_ENV=test \
+            quan1-ci:${{ github.sha }} python -c 'import importlib.metadata as m; import tomllib; lock=tomllib.load(open("uv.lock","rb")); expected={p["name"]:p["version"] for p in lock["package"]}; installed=list(m.distributions()); assert all(expected[d.metadata["Name"].lower().replace("_","-")]==d.version for d in installed); assert "pytest" not in {d.metadata["Name"].lower() for d in installed}; print("Installed production packages match uv.lock")'
+      - if: always()
+        run: docker rm -f quan1-ci || true
+  security:
+    name: Security
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.13.4'
+          python-version: '3.12'
+      - run: >-
+          docker run --rm -v "$PWD:/repo:ro"
+          -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=/repo
+          ghcr.io/gitleaks/gitleaks:v8.24.3 git /repo --redact --no-banner
+      - run: npm ci
+      - run: npm audit --audit-level=high
+      - run: mkdir -p .runtime
+      - run: uv export --frozen --no-dev --no-emit-project --output-file ../../.runtime/requirements-audit.txt > /dev/null
+        working-directory: services/backend
+      - run: uvx --from pip-audit==2.9.0 pip-audit --require-hashes --disable-pip --no-deps -r .runtime/requirements-audit.txt
+  gate:
+    name: Quality gate
+    needs: [backend, frontend, postgres, browser, docker, security]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - run: |
+          python - <<'PY'
+          import json, os
+          results = json.loads(os.environ['RESULTS'])
+          assert all(job['result'] == 'success' for job in results.values()), 'A required job failed, was cancelled or skipped'
+          PY
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+  release-bundle:
+    name: Release bundle
+    needs: gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: candidate-${{ github.sha }}
+          path: release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ github.sha }}
+          path: release/
+          retention-days: 30
+          if-no-files-found: error

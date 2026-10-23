@@ -12,7 +12,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from PIL import Image, UnidentifiedImageError
 from sqlalchemy import func, select, text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session as DbSession
 from sqlalchemy.orm.exc import StaleDataError
 
@@ -57,6 +57,8 @@ async def request_context(request: Request, call_next):
     response.headers["Referrer-Policy"] = "same-origin"
     if request.url.path.startswith(("/api/v1/admin", "/api/v1/auth", "/api/v1/worker")):
         response.headers["Cache-Control"] = "no-store"
+    if request.url.path.startswith(("/api/v1/health/", "/api/v1/version")):
+        response.headers["Cache-Control"] = "no-store"
     return response
 
 
@@ -90,9 +92,20 @@ def live():
     return {"status": "ok"}
 
 
+@app.get("/api/v1/version")
+def version():
+    return {"release": os.getenv("RELEASE_SHA") or os.getenv("RENDER_GIT_COMMIT", "local"),
+            "worker_protocol": 1}
+
+
 @app.get("/api/v1/health/ready")
 def readiness(db: DbSession = Depends(get_db)):
-    db.execute(text("SELECT 1 FROM users LIMIT 1"))
+    try:
+        db.execute(text("SELECT 1 FROM users LIMIT 1"))
+        if db.execute(text("SELECT version_num FROM alembic_version")).scalar() != "0008":
+            raise HTTPException(503, "Database migration is not ready.")
+    except SQLAlchemyError:
+        raise HTTPException(503, "Database is not ready.") from None
     return {"status": "ok"}
 
 
@@ -558,6 +571,7 @@ def public_pois(locale: str = Query("vi", max_length=35), db: DbSession = Depend
 
 @app.get("/api/v1/pois/{poi_id}")
 def public_poi(poi_id: str, request: Request, locale: str = Query("vi", max_length=35),
+               track_view: bool = True,
                db: DbSession = Depends(get_db)):
     get_language(db, locale, enabled_only=True)
     release = db.scalar(select(Release).join(Poi, Poi.id == Release.poi_id).where(
@@ -565,7 +579,8 @@ def public_poi(poi_id: str, request: Request, locale: str = Query("vi", max_leng
     if not release:
         raise HTTPException(404, "Địa điểm này chưa được xuất bản hoặc đã được lưu trữ.")
     snapshot = text_snapshot(release.snapshot)
-    record(db, request, poi_id, "view")
+    if track_view:
+        record(db, request, poi_id, "view")
     return snapshot
 
 

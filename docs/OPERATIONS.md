@@ -1,37 +1,74 @@
-# Vận hành local và chuẩn bị môi trường thật
+﻿# Vận hành quan1tourism
 
-## Phát triển
+Tài liệu hiện hành: [CI/CD](CICD.md), [deploy](DEPLOYMENT-RUNBOOK.md), [rollback/restore](ROLLBACK-RUNBOOK.md).
+Kết quả kiểm thử thực tế và phần chưa xác minh: [CICD-VERIFICATION.md](CICD-VERIFICATION.md).
+Không dùng hướng dẫn cũ để suy ra trạng thái dashboard hoặc migration cloud hiện tại.
 
-Backend tự đọc `.runtime/local.env` (gitignored); biến môi trường shell được ưu tiên. Máy local đã cấu hình PostgreSQL `quan1tourism`. Nếu không có `DATABASE_URL`, backend dùng SQLite `.runtime/quan1.db`. Media mặc định ở `.runtime/media`. Không tự đọc `.env`. `OLLAMA_BASE_URL` mặc định `http://127.0.0.1:11434`, `OLLAMA_MODEL` mặc định `qwen3:4b`; không có API key cloud.
+## Local và test
 
-Frontend Vite proxy `/api` tới 127.0.0.1:8000; trình duyệt không gửi token trong URL hay localStorage. Khi triển khai phải bố trí reverse proxy cùng origin cho `/api`; chưa có cấu hình reverse proxy/production trong repo này. Liên kết từ admin sang web hiện trỏ các cổng local được tài liệu hóa.
+Backend đọc `.runtime/local.env` nếu không có `QUAN1_IGNORE_LOCAL_ENV=1`; shell có ưu tiên.
+Không tự đọc `.env`. Development có thể dùng PostgreSQL local hoặc SQLite `.runtime/quan1.db`, media `.runtime/media`.
+Migration local chạy chủ động trước backend bằng `uv run --frozen alembic upgrade head` trong services/backend.
+Demo seed chỉ dành local/test; không seed cloud. Không chạy setup_postgresql/import-sqlite lên production.
 
-## Migration/seed
+CI và browser harness đặt IGNORE_LOCAL_ENV, APP_ENV=test, database/media tạm; không kế thừa file cấu hình local.
+PostgreSQL integration chỉ nhận loopback database quan1_ci, schema riêng từng test.
+Có thể chạy `services/backend/.venv/Scripts/python.exe scripts/test_postgres.py` trên Windows có PostgreSQL18 binaries,
+hoặc dùng TEST_POSTGRES_URL loopback và `uv run --frozen pytest --postgres -q -s` trong backend.
+Cluster helper khởi tạo trust auth chỉ loopback trên cổng ngẫu nhiên và tự dừng/xóa đúng cluster tạm, không đụng service có sẵn.
+Dùng trong máy/runner QA riêng; không dùng trust cluster này làm DB public.
 
-Chạy `uv run alembic upgrade head` trước khi khởi động API. Không gọi `create_all` lúc app khởi động. Chạy lại upgrade và seed không reset dữ liệu. PostgreSQL 18 local đã chạy migration tới `0004`. Có thể dùng `scripts/setup_postgresql.py --database quan1tourism --import-sqlite` để tạo DB và chuyển dữ liệu hiện có; script không ghi đè DB đã có dữ liệu. PostGIS không bắt buộc. Nếu có extension, tài khoản migration cần quyền cài extension để thêm cột địa lý và GIST index.
+Frontend development vẫn dùng Vite proxy local; artifact build dùng cùng origin `/`, `/admin/`, `/api/v1/...`.
+Worker/Pages proxy đặt API no-store và giữ cookie HttpOnly/SameSite/Secure; tile proxy dùng upstream cố định.
+Không cache API hoặc đưa secret vào VITE_*. Các domain/service thật giữ nguyên, owner kiểm tra dashboard theo runbook.
 
-Trong màn hình thêm địa điểm, AI chỉ tạo dữ liệu điền vào biểu mẫu; chưa ghi POI cho tới khi nhấn Lưu nháp. API chỉ chấp nhận URL bài viết Wikipedia, tải API Wikimedia với giới hạn dung lượng/timeout và kiểm tra redirect. Nội dung AI trả về phải qua schema; tọa độ chỉ lấy từ Wikipedia/Wikidata, thiếu thì NULL. Một tiến trình backend chỉ chạy một lượt AI cùng lúc; lượt khác trả 429. Các ngôn ngữ bắt buộc luôn được sinh cùng các ngôn ngữ tùy chọn đã chọn. Endpoint trạng thái `/api/v1/admin/ai/status` và sinh nội dung `/api/v1/admin/ai/wikipedia` yêu cầu tài khoản nhân viên.
+## Migration và sức khỏe
 
-## Sao lưu
-
-1. Dừng API/worker ghi dữ liệu. Giữ frontend cũng được, nhưng người dùng phải ngừng thao tác.
-2. Sao chép `.runtime/quan1.db` và **toàn bộ** `.runtime/media` cùng thời điểm sang thư mục backup riêng. DB chứa văn bản thuyết minh; media chứa ảnh và có thể có tệp audio lịch sử từ bản cũ.
-3. Với PostgreSQL, dùng `pg_dump` và sao lưu media cùng phiên bản, ghi lại revision Alembic và commit source.
-4. Kiểm tra file tồn tại, dung lượng/checksum; thử khôi phục vào database và thư mục media khác trước khi dùng cho môi trường thật.
-
-Để khôi phục, đặt DATABASE_URL/MEDIA_ROOT trỏ vào bản sao trong môi trường riêng, khởi động và kiểm tra `/health/ready`, đăng nhập, mở địa điểm và nghe TTS từ văn bản. Không ghi đè database đang chạy. Chưa thực hiện drill backup/restore production.
-
-## Theo dõi lỗi
+Release workflow là migration owner duy nhất: advisory lock PG, backup inventory và revision trước/sau.
+Docker CMD và native start command không migrate. Không dùng đồng thời startup migration, Render predeploy và release job.
+Không create_all lúc startup, không downgrade/restore tự động. Revision ứng dụng hiện tại 0008; readiness kiểm tra revision.
+Rollback ứng dụng chỉ khi binary trước tương thích schema đang có; dữ liệu không tự hạ theo binary.
 
 - `/api/v1/health/live`: process hoạt động.
-- `/api/v1/health/ready`: truy cập được bảng users (migration/database sẵn sàng).
-- API trả `X-Request-ID` để đối chiếu request. Uvicorn log thông thường; chưa tích hợp kho log tập trung.
-- Khi API không kết nối, giao diện hiển thị lỗi và nút thử lại. Đang nhập trong dialog thì nội dung còn trong bộ nhớ màn hình; chưa có lưu nháp offline tự động. Lưu thành công chỉ được báo khi backend trả thành công.
-- TTS đọc trực tiếp văn bản của phiên bản đã xuất bản; thay đổi bản nháp cần duyệt/xuất bản lại. HTTP 409 nghĩa là revision đã thay đổi; mở lại nội dung để lấy bản mới.
-- Trước khi nâng migration, dừng backend cũ và sao lưu. `0003` chuẩn hóa văn bản; `0004` thêm nguồn nhập Wikipedia. Giữ các release, media và audio lịch sử; sau đó khởi động backend mới.
-- Nếu AI chưa sẵn sàng, mở Ollama và kiểm tra model đã cài. Lỗi 502/503/504 có thể do nguồn Wikipedia, model hoặc timeout; giảm số ngôn ngữ rồi thử lại. Ảnh Commons hiển thị qua URL nguồn, cần Internet và được ghi công ngay cạnh nguồn bài viết.
-- Nếu thiếu giọng đọc, kiểm tra ngôn ngữ/giọng đã cài trong hệ điều hành hoặc thử trình duyệt khác. Danh sách ngôn ngữ trong DB không bảo đảm mọi thiết bị có đủ 15 giọng.
+- `/api/v1/health/ready`: DB truy cập được users và Alembic revision đúng 0008; không phụ thuộc Ollama/Internet.
+- `/api/v1/version`: release SHA và worker protocol. Render dùng RENDER_GIT_COMMIT; không đặt RELEASE_SHA cố định gây che bản mới.
+- `/release.json`: identity frontend đã build; Worker trả no-store.
+- `X-Request-ID`: đối chiếu request; không log cookie/password/worker token/DSN/request body.
 
-## Công việc còn lại trước production
+Smoke mặc định chỉ GET: chi tiết dùng `?track_view=false`, không ghi lượt nghe/xem; normal visitor vẫn đếm theo hành vi hiện có.
+Chỉ admin nhận thống kê; public snapshot bỏ counters, nháp/ẩn không public, nhân sự preview không tăng lượt.
+Danh sách public vẫn view_count DESC, id ASC; không có display_order hay thao tác lưu thứ tự.
 
-Không seed tài khoản demo. Cần luồng tạo admin/đổi mật khẩu, quản trị tài khoản và phân quyền nhiều vai trò; HTTPS/secure cookies; reverse proxy và CSP; giới hạn body/timeouts phía proxy; rate limit chia sẻ; kiểm tra PostgreSQL/PostGIS; migration rehearsal; lưu trữ S3; backup/restore; giám sát và load test thực tế. Đây là công việc chưa hoàn thành, không phải bằng chứng hệ thống đã sẵn sàng public.
+## Backup, media và sự cố
+
+Trước release: ghi backup DB/schema + media đồng bộ, revision, SHA/Worker version và checksum vào inventory hạn chế.
+Không upload dump/media/secret vào GitHub artifact. pg_dump phải phù hợp major server; xác minh pg_restore list và restore thử
+vào DB/storage khác. Public schema backup không thay Supabase auth/storage/global objects backup nếu có dùng.
+Bảo toàn accounts/sessions, bản dịch/nguồn, releases/audit, media, thống kê/dedup và AI queue/lease/worker pairing.
+Hướng dẫn cụ thể và cách giữ dữ liệu phát sinh sau backup nằm ở ROLLBACK-RUNBOOK.
+
+Nếu migration/deploy/poll lỗi: giữ evidence reconcile, kiểm tra deploy ID/revision/lock trước khi retry.
+Không bấm Cancel giữa migration; không suy health thành công là commit mới. Khi cần rollback, dừng release mới và theo runbook.
+Ảnh upload cần disk bền vững riêng mỗi môi trường; snapshot media và lịch sử audio nếu có không bị xóa khi deploy.
+Giới hạn/cache/rate-limit trong bộ nhớ process chưa thay thành dịch vụ trả phí hay distributed service.
+
+## Ollama worker trên PC
+
+Protocol hiện tại **1**: heartbeat/claim/complete qua `/api/v1/worker`, Bearer token riêng; request timeout30s,
+heartbeat20s, lease15phút, tối đa3 claim, queue hết hạn24giờ; completion cùng lease có thể retry3lần.
+Release API và manifest ghi worker_protocol=1. Client scripts/ollama_worker.py hiện tương thích v1;
+server vẫn chấp nhận client v1 cũ, chưa có cơ chế thương lượng version qua header.
+Trước thay contract phải giữ tương thích hoặc triển khai quy trình nâng worker thủ công với owner PC.
+Cloud pipeline không SSH/cập nhật PC, không mở public port11434 và không cấp credential DB cho PC.
+
+PC chỉ kết nối HTTPS ra backend (HTTP loopback chỉ local). Ollama giữ loopback, TTS vẫn Web Speech API hiện có,
+không chuyển sang dịch vụ trả phí. Worker offline chỉ làm admin AI chưa sẵn sàng; public readiness/nội dung vẫn chạy.
+Test CI mock inference, HTTP transport, auth, lease, retry, timeout và completion; không tải/chạy model thật.
+Khóa worker trong environment có ưu tiên so với pairing hash DB; rotate qua kênh hạn chế, không đưa token vào báo cáo.
+
+## Công việc bên ngoài repo
+
+Owner còn phải áp dụng branch/environment protection, cấp tài nguyên staging riêng, nạp secret,
+tắt Render/Workers Builds/Pages/webhook deploy độc lập, kiểm tra runtime/commands/major DB/PostGIS,
+routes/domain, media isolation, backup/restore drill và chạy staging thật.
+Nhiệm vụ hoàn thiện repo không phải bằng chứng production đã sẵn sàng hoặc được deploy.

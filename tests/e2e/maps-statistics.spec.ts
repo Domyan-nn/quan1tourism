@@ -1,4 +1,5 @@
-import { test, expect, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { test, expect, offline } from "./fixtures";
 import { mockSpeech } from "./speech";
 
 const headers = { "X-Requested-With": "Quan1Admin" };
@@ -193,6 +194,7 @@ test("visitor listens on map, switches places and detail shares the deduplicatio
   const first = await create(page, prefix + " A");
   const second = await create(page, prefix + " B", 106.708);
   const context = await browser.newContext();
+  await offline(context);
   const visitor = await context.newPage();
   await mockSpeech(visitor);
   const starts: string[] = [];
