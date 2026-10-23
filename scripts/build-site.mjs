@@ -13,6 +13,6 @@ const visitor = spawnSync(process.execPath, ["node_modules/vite/bin/vite.js", "b
 if (visitor.status !== 0) process.exit(visitor.status || 1);
 cpSync("apps/admin/dist", "apps/web/dist/admin", { recursive: true });
 writeFileSync("apps/web/dist/release.json", JSON.stringify({
-  release: process.env.RELEASE_SHA || process.env.GITHUB_SHA || process.env.RENDER_GIT_COMMIT || "local",
+  release: process.env.RELEASE_SHA || process.env.GITHUB_SHA || process.env.RENDER_GIT_COMMIT || process.env.WORKERS_CI_COMMIT_SHA || process.env.CF_PAGES_COMMIT_SHA || "local",
   worker_protocol: 1,
 }) + "\n");

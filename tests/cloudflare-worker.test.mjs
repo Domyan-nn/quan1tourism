@@ -23,3 +23,9 @@ test("packaged Worker routes admin/static requests to the assets binding", async
     assert.equal(await (await worker.fetch(new Request("https://front.test" + path), env)).text(), "compiled asset");
   }
 });
+
+test("Workers Builds uses its immutable asset release when no runtime SHA is configured", async () => {
+  const response = await worker.fetch(new Request("https://front.test/release.json"), { ASSETS: env.ASSETS });
+  assert.equal(response.headers.get("x-release-sha"), release);
+  assert.equal((await response.json()).release, release);
+});

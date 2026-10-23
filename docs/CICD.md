@@ -67,6 +67,9 @@ Production chỉ nhận `staging_run_id` thành công và so cùng manifest dige
 Backend Render nhận `commitId` đầy đủ; script poll deploy ID tới `live`, kiểm tra commit rồi smoke version.
 `/api/v1/version` lấy `RELEASE_SHA` hoặc `RENDER_GIT_COMMIT`; `/release.json` nằm trong frontend artifact.
 Worker không cache release.json, API proxy luôn `no-store` và giữ cookie.
+Build hỗ trợ cả `WORKERS_CI_COMMIT_SHA` và `CF_PAGES_COMMIT_SHA` từ tích hợp Cloudflare hiện có.
+Khi không có runtime RELEASE_SHA, Worker lấy identity từ release.json của chính asset version đang phục vụ;
+test trên bundle xác minh header và response body vẫn đọc được.
 Public smoke kiểm tra thêm `X-Release-SHA` của Worker; cấu hình deploy yêu cầu routes JSON và workers.dev tường minh,
 không suy giá trị mặc định có thể làm thay đổi domain đang dùng.
 

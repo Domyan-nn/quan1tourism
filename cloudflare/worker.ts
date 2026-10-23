@@ -18,7 +18,13 @@ export default {
     if (path === "/release.json") {
       const result = new Response(response.body, response);
       result.headers.set("Cache-Control", "no-store");
-      result.headers.set("X-Release-SHA", env.RELEASE_SHA || "local");
+      let release = env.RELEASE_SHA;
+      if (!release) {
+        // Workers Builds supplies the commit at build time; the assets belong to this Worker version.
+        const metadata = await result.clone().json().catch(() => null) as { release?: string } | null;
+        release = metadata?.release;
+      }
+      result.headers.set("X-Release-SHA", release && /^[a-f0-9]{40}$/.test(release) ? release : "local");
       return result;
     }
     return response;
