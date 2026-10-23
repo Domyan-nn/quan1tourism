@@ -95,7 +95,7 @@ def live():
 @app.get("/api/v1/version")
 def version():
     return {"release": os.getenv("RELEASE_SHA") or os.getenv("RENDER_GIT_COMMIT", "local"),
-            "worker_protocol": 1}
+            "worker_protocol": 1, "schema_revision": "0008"}
 
 
 @app.get("/api/v1/health/ready")
