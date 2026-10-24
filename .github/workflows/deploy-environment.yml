@@ -57,6 +57,12 @@ jobs:
         with:
           ref: ${{ inputs.release_sha }}
           persist-credentials: false
+      - name: Check required GitHub deployment settings
+        run: python scripts/release_preflight.py --configuration-only
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       - uses: actions/setup-node@v4
         with:
           node-version: '22'

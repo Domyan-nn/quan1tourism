@@ -107,6 +107,12 @@ và bảo đảm không sao chép dữ liệu thật sang test. Không kết n�
 
 ## Secrets và variables
 
+Workflow kiểm tra đủ tên biến/secret ngay sau checkout, trước khi cài dependencies hoặc tải artifact.
+Khi thiếu cấu hình, log và GitHub job summary liệt kê đúng các **tên** còn thiếu, không in giá trị.
+Kiểm tra hiện diện không thay thế kiểm tra isolation, backup/schema review và staging receipt phía sau.
+Biến trong Render Environment không tự được cấp cho GitHub Actions; cần cấu hình tại
+repository **Settings → Environments → staging → Variables / Secrets**.
+
 Không đặt giá trị secret trong file, tham số CLI, artifact, job summary hoặc frontend VITE_*.
 Secrets dưới đây tạo **riêng trong GitHub Environments staging và production**:
 

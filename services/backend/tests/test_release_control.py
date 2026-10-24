@@ -1,5 +1,7 @@
 import importlib.util
 import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -131,3 +133,64 @@ def test_render_poll_timeout_keeps_deploy_id_for_reconciliation(monkeypatch, tmp
     with pytest.raises(RuntimeError, match="reconcile"):
         control.render_deploy("a" * 40, timeout=1)
     assert json.loads(Path(".runtime/render-deploy.json").read_text())["deploy_id"] == "dep-active"
+
+
+def complete_settings():
+    values = {key: 'reviewed-value' for key in (*preflight.VARIABLES, *preflight.SECRETS)}
+    values.update(RELEASE_ENVIRONMENT='staging', DATABASE_URL='postgresql://ci:never-print-this@stage/db?sslmode=require',
+                  MIGRATION_APPROVED='true', BACKUP_REFERENCE='verified-inventory')
+    values['DATABASE_IDENTITY'] = preflight.database_identity(values['DATABASE_URL'])
+    values['PRODUCTION_DATABASE_IDENTITY'] = preflight.database_identity('postgresql://ci@prod/db')
+    for key in ('BACKEND_ORIGIN', 'PUBLIC_ORIGIN', 'RENDER_SERVICE_ID', 'WORKER_NAME'):
+        values['CLOUDFLARE_WORKER_NAME' if key == 'WORKER_NAME' else key] = 'https://stage.test' if key.endswith('ORIGIN') else 'stage'
+        values['PRODUCTION_' + key] = 'https://prod.test' if key.endswith('ORIGIN') else 'prod'
+    return values
+
+
+def test_empty_environment_reports_all_missing_names_before_dependency_install(tmp_path):
+    environment = {key: value for key, value in os.environ.items() if key not in (*preflight.VARIABLES, *preflight.SECRETS)}
+    environment['RELEASE_ENVIRONMENT'] = 'staging'
+    script = Path(__file__).parents[3] / 'scripts/release_preflight.py'
+    # -S disables site-packages: this must work before uv installs SQLAlchemy.
+    result = subprocess.run([sys.executable, '-S', str(script), '--configuration-only'], cwd=tmp_path,
+                            env=environment, capture_output=True, text=True, timeout=15)
+    assert result.returncode == 1
+    assert all(key in result.stderr for key in (*preflight.VARIABLES, *preflight.SECRETS))
+    assert 'Settings > Environments > staging' in result.stderr
+    assert 'Render Environment settings are separate' in result.stderr
+
+
+def test_configuration_presence_does_not_replace_resource_isolation_checks():
+    values = complete_settings()
+    preflight.configuration_only(values)
+    preflight.validate(values)
+    values['RENDER_SERVICE_ID'] = values['PRODUCTION_RENDER_SERVICE_ID']
+    preflight.configuration_only(values)
+    with pytest.raises(preflight.PreflightError) as caught:
+        preflight.validate(values)
+    assert caught.value.keys == ('RENDER_SERVICE_ID',)
+
+
+def test_preflight_diagnostics_and_job_summary_never_display_values(monkeypatch, tmp_path, capsys):
+    values = complete_settings()
+    values['RENDER_API_KEY'] = 'render-secret-must-not-be-displayed'
+    values['CLOUDFLARE_API_TOKEN'] = 'cloudflare-secret-must-not-be-displayed'
+    values['RENDER_SERVICE_ID'] = ''
+    for key, value in values.items():
+        monkeypatch.setenv(key, value)
+    summary = tmp_path / 'summary.md'
+    monkeypatch.setenv('GITHUB_STEP_SUMMARY', str(summary))
+    monkeypatch.setenv('GITHUB_ACTIONS', 'true')
+    monkeypatch.setattr(sys, 'argv', ['release_preflight.py', '--configuration-only'])
+    assert preflight.run() == 1
+    output = capsys.readouterr().err + summary.read_text(encoding='utf-8')
+    assert 'RENDER_SERVICE_ID' in output and '::error title=Deployment configuration::' in output
+    assert all(secret not in output for secret in ('never-print-this', values['RENDER_API_KEY'], values['CLOUDFLARE_API_TOKEN']))
+
+
+def test_invalid_dsn_is_classified_without_echoing_secret(monkeypatch, capsys):
+    monkeypatch.setattr(sys, 'argv', ['release_preflight.py', '--database-identity'])
+    monkeypatch.setenv('DATABASE_URL', 'invalid secret-password-value')
+    assert preflight.run() == 1
+    output = capsys.readouterr().err
+    assert 'DATABASE_URL' in output and 'secret-password-value' not in output

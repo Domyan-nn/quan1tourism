@@ -7,13 +7,45 @@ import re
 import sys
 from urllib.parse import urlsplit
 
-from sqlalchemy.engine import make_url
+VARIABLES = (
+    "BACKEND_ORIGIN", "PUBLIC_ORIGIN", "RENDER_SERVICE_ID", "CLOUDFLARE_WORKER_NAME",
+    "CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_CONFIG_REVIEWED", "CLOUDFLARE_ROUTES_JSON",
+    "CLOUDFLARE_WORKERS_DEV", "DATABASE_IDENTITY", "EXPECTED_MEDIA_ROOT", "MIGRATION_APPROVED",
+    "BACKUP_REFERENCE", "PRODUCTION_DATABASE_IDENTITY", "PRODUCTION_RENDER_SERVICE_ID",
+    "PRODUCTION_WORKER_NAME", "PRODUCTION_BACKEND_ORIGIN", "PRODUCTION_PUBLIC_ORIGIN",
+)
+SECRETS = ("DATABASE_URL", "RENDER_API_KEY", "CLOUDFLARE_API_TOKEN")
+
+
+class PreflightError(ValueError):
+    """Only static diagnostics and setting NAMES may enter runner output."""
+    def __init__(self, message, keys=()):
+        self.message, self.keys = message, tuple(keys)
+        super().__init__(message + (": " + ", ".join(self.keys) if self.keys else ""))
+
+
+def require_settings(environment, names):
+    missing = [key for key in names if not str(environment.get(key) or "").strip()]
+    if missing:
+        raise PreflightError("Missing GitHub deployment settings", missing)
+
+
+def configuration_only(environment):
+    if environment.get("RELEASE_ENVIRONMENT") not in {"staging", "production"}:
+        raise PreflightError("Unknown environment", ("RELEASE_ENVIRONMENT",))
+    require_settings(environment, (*VARIABLES, *SECRETS))
 
 
 def database_identity(value):
-    url = make_url(value)
+    from sqlalchemy.engine import make_url
+    from sqlalchemy.exc import ArgumentError
+
+    try:
+        url = make_url(value)
+    except (ValueError, TypeError, ArgumentError):
+        raise PreflightError("Invalid PostgreSQL connection configuration", ("DATABASE_URL",)) from None
     if url.get_backend_name() not in {"postgres", "postgresql"}:
-        raise ValueError("PostgreSQL required")
+        raise PreflightError("PostgreSQL required", ("DATABASE_URL",))
     # A Supabase pooler shares host/database between projects, so include username.
     parts = [url.host, url.port or 5432, url.database, url.username]
     return hashlib.sha256(json.dumps(parts, separators=(",", ":")).encode()).hexdigest()
@@ -21,48 +53,88 @@ def database_identity(value):
 
 def validate(environment):
     if environment.get("RELEASE_ENVIRONMENT") not in {"staging", "production"}:
-        raise ValueError("Unknown environment")
+        raise PreflightError("Unknown environment", ("RELEASE_ENVIRONMENT",))
+    identity_keys = ("DATABASE_URL", "DATABASE_IDENTITY", "PRODUCTION_DATABASE_IDENTITY",
+                     "BACKEND_ORIGIN", "PUBLIC_ORIGIN", "RENDER_SERVICE_ID", "CLOUDFLARE_WORKER_NAME",
+                     "PRODUCTION_BACKEND_ORIGIN", "PRODUCTION_PUBLIC_ORIGIN", "PRODUCTION_RENDER_SERVICE_ID",
+                     "PRODUCTION_WORKER_NAME")
+    require_settings(environment, identity_keys)
     production = environment["RELEASE_ENVIRONMENT"] == "production"
     identity = database_identity(environment["DATABASE_URL"])
     if identity != environment["DATABASE_IDENTITY"]:
-        raise ValueError("Database identity differs from the reviewed environment")
+        raise PreflightError("Database identity differs from the reviewed environment", ("DATABASE_IDENTITY",))
     comparisons = [(identity, environment["PRODUCTION_DATABASE_IDENTITY"])]
     for key in ("BACKEND_ORIGIN", "PUBLIC_ORIGIN", "RENDER_SERVICE_ID", "WORKER_NAME"):
         local_key = "CLOUDFLARE_WORKER_NAME" if key == "WORKER_NAME" else key
         left, right = environment[local_key], environment["PRODUCTION_" + key]
         if not left or not right:
-            raise ValueError("Missing reviewed resource identity")
+            raise PreflightError("Missing reviewed resource identity", (local_key, "PRODUCTION_" + key))
         if key.endswith("ORIGIN"):
             for value in (left, right):
                 parsed = urlsplit(value)
                 if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password or parsed.path not in {"", "/"} or parsed.query or parsed.fragment:
-                    raise ValueError("HTTPS origins required")
+                    raise PreflightError("HTTPS origins required", (local_key, "PRODUCTION_" + key))
             left, right = left.rstrip("/"), right.rstrip("/")
         comparisons.append((left, right))
     if any((left == right) != production for left, right in comparisons):
-        raise ValueError("Staging and production resources must be separate; production must match its inventory")
+        conflicts = ["DATABASE_IDENTITY", "BACKEND_ORIGIN", "PUBLIC_ORIGIN", "RENDER_SERVICE_ID", "CLOUDFLARE_WORKER_NAME"]
+        raise PreflightError("Staging resources must be separate; production must match its inventory",
+                             [key for key, (left, right) in zip(conflicts, comparisons) if (left == right) != production])
     if environment.get("MIGRATION_APPROVED") != "true" or not re.fullmatch(
         r"[A-Za-z0-9_.:/-]{3,200}", environment.get("BACKUP_REFERENCE", "")
     ):
-        raise ValueError("Backup/schema compatibility review required")
+        raise PreflightError("Backup/schema compatibility review required", ("MIGRATION_APPROVED", "BACKUP_REFERENCE"))
 
 
 def main():
+    if sys.argv[1:] == ["--configuration-only"]:
+        configuration_only(os.environ)
+        print("Required deployment settings are present; resource isolation and release checks still follow.")
+        return
     if sys.argv[1:] == ["--database-identity"]:
+        require_settings(os.environ, ("DATABASE_URL",))
         print(database_identity(os.environ["DATABASE_URL"]))
         return
     validate(os.environ)
     if os.environ["RELEASE_ENVIRONMENT"] == "production":
-        staging = json.loads(Path(".runtime/staging/receipt.json").read_text())
-        digest = hashlib.sha256(Path(".runtime/release/manifest.json").read_bytes()).hexdigest()
-        if (staging["bundle_sha256"] != digest or staging["release"] != os.environ["RELEASE_SHA"]
-                or str(staging["ci_run_id"]) != os.environ["CI_RUN_ID"]):
-            raise ValueError("Staging verified a different artifact")
+        try:
+            staging = json.loads(Path(".runtime/staging/receipt.json").read_text())
+            digest = hashlib.sha256(Path(".runtime/release/manifest.json").read_bytes()).hexdigest()
+            matches = (staging["bundle_sha256"] == digest and staging["release"] == os.environ["RELEASE_SHA"]
+                       and str(staging["ci_run_id"]) == os.environ["CI_RUN_ID"])
+        except (OSError, ValueError, KeyError):
+            raise PreflightError("Missing or invalid staging receipt; promote a successful staging run") from None
+        if not matches:
+            raise PreflightError("Staging verified a different artifact")
     print("Environment isolation and release preflight passed.")
 
 
-if __name__ == "__main__":
+def run():
     try:
         main()
+    except PreflightError as error:
+        message = "Preflight failed: " + str(error) + ". Values are not displayed."
+        print(message, file=sys.stderr)
+        target = os.environ.get("RELEASE_ENVIRONMENT")
+        target = target if target in {"staging", "production"} else "the target environment"
+        hint = (f"Configure repository Settings > Environments > {target} > Variables / Secrets. "
+                "Render Environment settings are separate from GitHub Actions settings. "
+                "Do not reuse production resources for staging.")
+        print(hint, file=sys.stderr)
+        if os.environ.get("GITHUB_ACTIONS") == "true":
+            print("::error title=Deployment configuration::" + message, file=sys.stderr)
+        if os.environ.get("GITHUB_STEP_SUMMARY"):
+            try:
+                with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as summary:
+                    summary.write("## Deployment configuration\n\n" + message + "\n\n" + hint + "\n")
+            except OSError:
+                pass
+        return 1
     except Exception:
-        sys.exit("Preflight failed: check resource identities, backup/schema review and staging evidence. No credentials emitted.")
+        print("Preflight failed: invalid resource configuration or release evidence. No credentials emitted.", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(run())
