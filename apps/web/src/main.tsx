@@ -19,6 +19,7 @@ import {
   SpeechPlayer,
   recordEngagement,
 } from "@quan1/api-client";
+import { getCategoryLabel } from "@quan1/contracts";
 import type { PublicCategory, Language, Locale, Poi } from "@quan1/contracts";
 import { AuthControls } from "./Auth";
 import { MapExplorer } from "./MapExplorer";
@@ -237,11 +238,12 @@ function Visitor() {
               {selected.address}
             </p>
             <p>
-              {
+              {getCategoryLabel(
                 categories.find(
                   (category) => category.id === selected.category_id,
-                )?.name
-              }
+                ),
+                uiLocale,
+              )}
             </p>
             {selected.is_demo && (
               <p className="notice">
@@ -401,11 +403,12 @@ function Visitor() {
                       </h3>
                       <p>{p.address}</p>
                       <p>
-                        {
+                        {getCategoryLabel(
                           categories.find(
                             (category) => category.id === p.category_id,
-                          )?.name
-                        }
+                          ),
+                          uiLocale,
+                        )}
                       </p>
                       <p className="place-description">
                         {p.short_description ||

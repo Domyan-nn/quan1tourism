@@ -44,10 +44,10 @@ def test_unicode_category_roundtrip_rename_preserves_id_and_relationship(env):
     client, factory, _ = env
     login(client, "admin")
     name = "Di tích lịch sử — Văn hóa 日本 العربية 한국어"
-    created = client.post("/api/v1/admin/categories", json={"name": name}).json()
+    created = client.post("/api/v1/admin/categories", json={"name": name, "name_vi": name}).json()
     poi = client.post("/api/v1/admin/pois", json=draft_payload() | {"category_id": created["id"]}).json()
     assert client.get("/api/v1/admin/categories").json()[0]
-    changed = client.put(f"/api/v1/admin/categories/{created['id']}", json={"name": name + " mới"})
+    changed = client.put(f"/api/v1/admin/categories/{created['id']}", json={"name": name + " mới", "name_vi": name + " mới"})
     assert changed.status_code == 200 and changed.json()["id"] == created["id"]
     with factory() as db:
         assert db.get(Category, created["id"]).name == name + " mới"
@@ -55,9 +55,10 @@ def test_unicode_category_roundtrip_rename_preserves_id_and_relationship(env):
     assert not client.get("/api/v1/categories").json()  # Draft-only categories stay private.
     client.put(f"/api/v1/admin/pois/{poi['id']}", json=draft_payload() | {
         "category_id": created["id"], "revision": poi["revision"], "status": "published"})
-    assert client.get("/api/v1/categories").json() == [{"id": created["id"], "name": name + " mới", "color": "green"}]
+    assert client.get("/api/v1/categories").json() == [{"id": created["id"], "name": name + " mới",
+                                                      "name_vi": name + " mới", "color": "green"}]
     for damaged in ("Di t?ch", "Tên \ufffd", "Tên\x00"):
-        assert client.post("/api/v1/admin/categories", json={"name": damaged}).status_code == 422
+        assert client.post("/api/v1/admin/categories", json={"name": damaged, "name_vi": name}).status_code == 422
 
 
 def queue(client, poi, codes=None, **extra):

@@ -52,14 +52,14 @@ def seed():
                         password_hash=passwords.hash(DEMO_PASSWORD),
                     )
                 )
-        for key, name, color in (
-            ("heritage", "Di tích lịch sử", "orange"),
-            ("architecture", "Kiến trúc", "purple"),
-            ("culture", "Văn hóa & đời sống", "blue"),
-            ("nature", "Không gian xanh", "green"),
+        for key, name, name_vi, color in (
+            ("heritage", "Historical Sites", "Di tích lịch sử", "orange"),
+            ("architecture", "Architecture", "Kiến trúc", "purple"),
+            ("culture", "Culture & Lifestyle", "Văn hóa & đời sống", "blue"),
+            ("nature", "Green Spaces", "Không gian xanh", "green"),
         ):
             if not db.get(Category, key):
-                db.add(Category(id=key, name=name, color=color))
+                db.add(Category(id=key, name=name, name_vi=name_vi, color=color))
         db.flush()
         for i, (name, en, address, category, lat, lng) in enumerate(PLACES):
             poi_id = f"demo-{i + 1:02d}"

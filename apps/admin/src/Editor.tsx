@@ -24,6 +24,7 @@ import {
   SpeechPlayer,
   LocationEditor,
 } from "@quan1/api-client";
+import { getCategoryLabel } from "@quan1/contracts";
 import type {
   Audit,
   Category,
@@ -617,7 +618,7 @@ export function Editor({
                     </option>
                     {categories.map((c) => (
                       <option key={c.id} value={c.id}>
-                        {c.name}
+                        {getCategoryLabel(c, locale)}
                       </option>
                     ))}
                   </select>

@@ -31,6 +31,7 @@ import {
   X,
 } from "lucide-react";
 import { uiMessage, api, ApiError } from "@quan1/api-client";
+import { getCategoryLabel } from "@quan1/contracts";
 import type {
   Category,
   Language,
@@ -120,6 +121,7 @@ export function App() {
   const [categoryDialog, setCategoryDialog] = useState(false);
   const [categoryEditing, setCategoryEditing] = useState<Category | null>(null);
   const [categoryName, setCategoryName] = useState("");
+  const [categoryNameVi, setCategoryNameVi] = useState("");
   const [categoryError, setCategoryError] = useState("");
   const [categoryBusy, setCategoryBusy] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Category | null>(null);
@@ -274,6 +276,7 @@ export function App() {
           method: categoryEditing ? "PUT" : "POST",
           body: JSON.stringify({
             name: categoryName,
+            name_vi: categoryNameVi,
             color:
               categoryEditing?.color ??
               ["green", "orange", "purple", "blue"][categories.length % 4],
@@ -282,6 +285,7 @@ export function App() {
       );
       setCategoryDialog(false);
       setCategoryName("");
+      setCategoryNameVi("");
       setCategoryEditing(null);
       notify(locale === "vi" ? "Đã lưu danh mục." : "Category saved.");
     } catch (e) {
@@ -550,6 +554,7 @@ export function App() {
                   setCategoryError("");
                   setCategoryEditing(null);
                   setCategoryName("");
+                  setCategoryNameVi("");
                   setCategoryDialog(true);
                 }}
               >
@@ -662,7 +667,9 @@ export function App() {
                       <Cover poi={p} />
                       <div>
                         <strong>{p.name}</strong>
-                        <small>{categoryFor(p.category_id)?.name}</small>
+                        <small>
+                          {getCategoryLabel(categoryFor(p.category_id), locale)}
+                        </small>
                       </div>
                       <Badge status={p.status} t={t} />
                     </button>
@@ -740,7 +747,7 @@ export function App() {
                       <option value="">{t.allCategories}</option>
                       {categories.map((c) => (
                         <option key={c.id} value={c.id}>
-                          {c.name}
+                          {getCategoryLabel(c, locale)}
                         </option>
                       ))}
                     </select>
@@ -846,7 +853,10 @@ export function App() {
                                   {p.name}
                                 </button>
                                 <small>
-                                  {categoryFor(p.category_id)?.name}
+                                  {getCategoryLabel(
+                                    categoryFor(p.category_id),
+                                    locale,
+                                  )}
                                 </small>
                               </div>
                             </div>
@@ -927,7 +937,12 @@ export function App() {
                           {p.address}
                         </p>
                         <div className="card-bottom">
-                          <span>{categoryFor(p.category_id)?.name}</span>
+                          <span>
+                            {getCategoryLabel(
+                              categoryFor(p.category_id),
+                              locale,
+                            )}
+                          </span>
                           <span className="language-chips">
                             {languageCodes
                               .filter((code) => p.translations[code]?.tts_ready)
@@ -1000,7 +1015,7 @@ export function App() {
                             </td>
                             <td>
                               <span className={`category-pill ${c?.color}`}>
-                                {c?.name ?? "—"}
+                                {getCategoryLabel(c, locale) || "—"}
                               </span>
                             </td>
                             <td>
@@ -1157,7 +1172,10 @@ export function App() {
                     <span className="category-icon">
                       <Tags size={23} />
                     </span>
-                    <h2>{c.name}</h2>
+                    <h2>{getCategoryLabel(c, locale)}</h2>
+                    {!c.name_vi?.trim() && (
+                      <p className="notice">{t.categoryMissingVi}</p>
+                    )}
                     <p>
                       {c.count} {t.results}
                     </p>
@@ -1178,13 +1196,12 @@ export function App() {
                           onClick={() => {
                             setCategoryEditing(c);
                             setCategoryName(c.name);
+                            setCategoryNameVi(c.name_vi ?? "");
                             setCategoryError("");
                             setCategoryDialog(true);
                           }}
                         >
-                          {locale === "vi"
-                            ? "Sửa tên danh mục"
-                            : "Edit category name"}
+                          {t.editCategory}
                         </button>
                       )}
                       {user.role === "admin" && (
@@ -1195,7 +1212,7 @@ export function App() {
                             setCategoryError("");
                             setDeleteTarget(c);
                           }}
-                          aria-label={`${t.delete}: ${c.name}`}
+                          aria-label={`${t.delete}: ${getCategoryLabel(c, locale)}`}
                           title={
                             c.count > 0
                               ? locale === "vi"
@@ -1335,18 +1352,19 @@ export function App() {
       {categoryDialog && (
         <Dialog
           locale={locale}
-          title={t.addCategory}
+          title={categoryEditing ? t.editCategory : t.addCategory}
           onClose={() => {
             if (!categoryBusy) {
               setCategoryDialog(false);
               setCategoryEditing(null);
               setCategoryName("");
+              setCategoryNameVi("");
             }
           }}
         >
           <form className="dialog-content" onSubmit={createCategory}>
             <label className="field-label">
-              {t.categoryName}
+              {t.categoryNameEn}
               <input
                 className="input"
                 autoFocus
@@ -1354,11 +1372,20 @@ export function App() {
                 maxLength={100}
                 value={categoryName}
                 onChange={(e) => setCategoryName(e.target.value)}
-                placeholder={
-                  locale === "vi"
-                    ? "Ví dụ: Ẩm thực địa phương"
-                    : "e.g. Local food"
-                }
+                lang="en"
+                placeholder="e.g. Local food"
+              />
+            </label>
+            <label className="field-label">
+              {t.categoryNameVi}
+              <input
+                className="input"
+                required
+                maxLength={100}
+                lang="vi"
+                value={categoryNameVi}
+                onChange={(e) => setCategoryNameVi(e.target.value)}
+                placeholder="Ví dụ: Ẩm thực địa phương"
               />
             </label>
             {categoryError && (
@@ -1374,6 +1401,7 @@ export function App() {
                   setCategoryDialog(false);
                   setCategoryEditing(null);
                   setCategoryName("");
+                  setCategoryNameVi("");
                 }}
                 disabled={categoryBusy}
               >
@@ -1381,7 +1409,9 @@ export function App() {
               </button>
               <button
                 className="button primary"
-                disabled={categoryBusy || !categoryName.trim()}
+                disabled={
+                  categoryBusy || !categoryName.trim() || !categoryNameVi.trim()
+                }
               >
                 {categoryBusy
                   ? t.saving
@@ -1406,8 +1436,8 @@ export function App() {
           <div className="dialog-content">
             <p>
               {locale === "vi"
-                ? `Xóa danh mục trống “${deleteTarget.name}”?`
-                : `Delete the empty category “${deleteTarget.name}”?`}
+                ? `Xóa danh mục trống “${getCategoryLabel(deleteTarget, locale)}”?`
+                : `Delete the empty category “${getCategoryLabel(deleteTarget, locale)}”?`}
             </p>
             {categoryError && (
               <div className="notice error" role="alert">

@@ -14,7 +14,7 @@ def test_smoke_can_read_public_details_without_recording_visits(env, monkeypatch
     assert client.get("/api/v1/health/ready").status_code == 200
     monkeypatch.setenv("RELEASE_SHA", "a" * 40)
     assert client.get("/api/v1/version").json() == {
-        "release": "a" * 40, "worker_protocol": 2, "schema_revision": "0009",
+        "release": "a" * 40, "worker_protocol": 2, "schema_revision": "0010",
     }
     assert client.get("/api/v1/admin/pois").status_code == 401
     login(client, "admin")

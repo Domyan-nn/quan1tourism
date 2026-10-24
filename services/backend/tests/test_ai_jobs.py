@@ -37,6 +37,8 @@ def test_worker_queue_roundtrip_is_private_durable_and_never_publishes(env, upst
     assert client.post("/api/v1/worker/claim", headers=WORKER, json={}).json()["job"] is None
     assert client.get(f"/api/v1/admin/ai/jobs/{job_id}").json()["status"] == "running"
     payload = claimed["payload"]
+    assert payload["categories"][0]["id"] == "test-category"
+    assert payload["categories"][0]["name"] == "Test"
     draft = generate_draft(URL, payload["categories"], payload["languages"], article=payload["article"])
     completion = {"lease": claimed["lease"], **draft}
     endpoint = f"/api/v1/worker/jobs/{job_id}/complete"

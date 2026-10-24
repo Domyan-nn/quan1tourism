@@ -43,6 +43,7 @@ jobs:
       - run: npm run typecheck
       - run: node --test tests/cloudflare-map-tiles.test.mjs tests/cloudflare-proxy.test.mjs
       - run: node --experimental-strip-types --test tests/narration-logic.test.mjs
+      - run: npm run test:categories
       - run: npm run check:worker
       - run: node --test tests/cloudflare-worker.test.mjs
       - run: node scripts/release-bundle.mjs pack

@@ -22,7 +22,7 @@ if (mode === "pack") {
   const checksums = Object.fromEntries(files(root).filter((f) => !f.endsWith("manifest.json"))
     .map((file) => [relative(root, file).split(sep).join("/"), hash(file)]));
   writeFileSync(resolve(root, "manifest.json"), JSON.stringify({
-    release, schema_revision: "0009", worker_protocol: 2, files: checksums,
+    release, schema_revision: "0010", worker_protocol: 2, files: checksums,
   }, null, 2) + "\n");
 } else {
   const manifest = JSON.parse(readFileSync(resolve(root, "manifest.json"), "utf8"));

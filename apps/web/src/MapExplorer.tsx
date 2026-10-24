@@ -7,6 +7,7 @@ import {
   SourceAttribution,
   SpeechPlayer,
 } from "@quan1/api-client";
+import { getCategoryLabel } from "@quan1/contracts";
 import type { PublicCategory, Language, Poi } from "@quan1/contracts";
 import { useLocation } from "./useLocation";
 import { distanceM } from "./geofencing";
@@ -134,11 +135,12 @@ export function MapExplorer({
             )}
             <h3>{selected.name}</h3>
             <p>
-              {
+              {getCategoryLabel(
                 categories.find(
                   (category) => category.id === selected.category_id,
-                )?.name
-              }
+                ),
+                uiLocale,
+              )}
             </p>
             {gps.fix &&
               selected.latitude !== null &&

@@ -302,7 +302,9 @@ test("Unicode category survives admin create/rename and the public visitor card 
     .getByRole("button", { name: "Thêm danh mục", exact: true })
     .click();
   const categoryName = `Văn hóa 日本 العربية ${info.project.name} ${Date.now()}`;
-  await page.getByLabel("Tên danh mục", { exact: true }).fill(categoryName);
+  const categoryNameEn = `Culture ${info.project.name} ${Date.now()}`;
+  await page.getByLabel("Tên tiếng Anh", { exact: true }).fill(categoryNameEn);
+  await page.getByLabel("Tên tiếng Việt", { exact: true }).fill(categoryName);
   const response = page.waitForResponse(
     (r) =>
       r.url().endsWith("/api/v1/admin/categories") &&
@@ -316,7 +318,7 @@ test("Unicode category survives admin create/rename and the public visitor card 
     .getByRole("button", { name: "Sửa tên danh mục", exact: true })
     .click();
   await page
-    .getByLabel("Tên danh mục", { exact: true })
+    .getByLabel("Tên tiếng Việt", { exact: true })
     .fill(categoryName + " mới");
   await page.getByRole("button", { name: "Lưu danh mục", exact: true }).click();
   await expect(
@@ -347,8 +349,11 @@ test("Unicode category survives admin create/rename and the public visitor card 
     await page.request.get(origin + "/api/v1/categories")
   ).json();
   expect(
-    publicCategories.find((c: { id: string }) => c.id === category.id).name,
+    publicCategories.find((c: { id: string }) => c.id === category.id).name_vi,
   ).toBe(categoryName + " mới");
+  expect(
+    publicCategories.find((c: { id: string }) => c.id === category.id).name,
+  ).toBe(categoryNameEn);
   expect(publicCategories.every((c: object) => !("count" in c))).toBe(true);
 });
 

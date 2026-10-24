@@ -48,6 +48,7 @@ class Category(Base):
     __tablename__ = "categories"
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
     name: Mapped[str] = mapped_column(String(100), unique=True)
+    name_vi: Mapped[str | None] = mapped_column(String(100), nullable=True)
     color: Mapped[str] = mapped_column(String(20), default="green")
 
 

@@ -21,10 +21,23 @@ export interface User {
 export interface Category {
   id: string;
   name: string;
+  name_vi: string | null;
   color: string;
   count: number;
 }
 export type PublicCategory = Omit<Category, "count">;
+
+// UI language is independent of the narration language. Older API responses
+// and transitional rows may omit the Vietnamese label.
+export function getCategoryLabel(
+  category: { name: string; name_vi?: string | null } | null | undefined,
+  uiLocale: string,
+): string {
+  if (!category) return "";
+  return uiLocale === "vi"
+    ? category.name_vi?.trim() || category.name
+    : category.name;
+}
 export interface Translation {
   title: string;
   text: string;

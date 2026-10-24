@@ -237,7 +237,7 @@ def test_category_delete_requires_admin_and_empty_category(env):
     create(client)
     login(client, "admin")
     assert client.delete("/api/v1/admin/categories/test-category").status_code == 409
-    category = client.post("/api/v1/admin/categories", json={"name": "Empty"}).json()
+    category = client.post("/api/v1/admin/categories", json={"name": "Empty", "name_vi": "Trống"}).json()
     assert client.delete(f"/api/v1/admin/categories/{category['id']}").status_code == 204
 
 

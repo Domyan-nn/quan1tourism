@@ -150,7 +150,7 @@ def test_visitor_cannot_access_admin_drafts_or_private_media(env):
         ).status_code
         == 403
     )
-    assert client.post("/api/v1/admin/categories", json={"name": "hack"}).status_code == 403
+    assert client.post("/api/v1/admin/categories", json={"name": "hack", "name_vi": "hack"}).status_code == 403
     assert client.delete("/api/v1/admin/categories/test-category").status_code == 403
     assert (
         client.post(

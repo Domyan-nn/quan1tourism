@@ -1,5 +1,7 @@
 # Saigon Stories · Quận 1 Tourism
 
+Danh mục song ngữ Việt/Anh và migration `0010`: [mapping, kiểm thử và hướng dẫn chuyển đổi](docs/BILINGUAL-CATEGORIES.md).
+
 Trang quản trị nội dung thuyết minh du lịch bằng **React + TypeScript**, kết nối **FastAPI + SQLAlchemy + Alembic**. Tiếng Việt mặc định, có giao diện tiếng Anh và cỡ chữ lớn. Có bản đồ du khách và thống kê lượt xem/lượt nghe. GPS foreground, bán kính theo địa điểm, UI VI/EN độc lập với ngôn ngữ bài và bổ sung bản dịch qua Ollama queue: [hướng dẫn](docs/NARRATION-GPS.md), [kiểm thử](docs/NARRATION-VERIFICATION.md). Các thay đổi mới chưa triển khai cloud.
 
 ## Chạy local

@@ -98,14 +98,14 @@ def live():
 @app.get("/api/v1/version")
 def version():
     return {"release": os.getenv("RELEASE_SHA") or os.getenv("RENDER_GIT_COMMIT", "local"),
-            "worker_protocol": 2, "schema_revision": "0009"}
+            "worker_protocol": 2, "schema_revision": "0010"}
 
 
 @app.get("/api/v1/health/ready")
 def readiness(db: DbSession = Depends(get_db)):
     try:
         db.execute(text("SELECT 1 FROM users LIMIT 1"))
-        if db.execute(text("SELECT version_num FROM alembic_version")).scalar() != "0009":
+        if db.execute(text("SELECT version_num FROM alembic_version")).scalar() != "0010":
             raise HTTPException(503, "Database migration is not ready.")
     except SQLAlchemyError:
         raise HTTPException(503, "Database is not ready.") from None
@@ -239,7 +239,7 @@ def update_language(
 def public_categories(db: DbSession = Depends(get_db)):
     query = select(Category).join(Release, Release.snapshot["category_id"].as_string() == Category.id).join(
         Poi, Poi.id == Release.poi_id).where(Release.is_current.is_(True), Poi.status != "archived")
-    return [{"id": c.id, "name": c.name, "color": c.color}
+    return [{"id": c.id, "name": c.name, "name_vi": c.name_vi, "color": c.color}
             for c in db.scalars(query.distinct().order_by(Category.name))]
 
 
@@ -249,6 +249,7 @@ def categories(db: DbSession = Depends(get_db), user: User = Depends(editors)):
         {
             "id": c.id,
             "name": c.name,
+            "name_vi": c.name_vi,
             "color": c.color,
             "count": db.scalar(select(func.count()).select_from(Poi).where(Poi.category_id == c.id)),
         }
@@ -261,14 +262,15 @@ def create_category(data: CategoryInput, db: DbSession = Depends(get_db), user: 
     name = data.name.strip()
     if not name:
         raise HTTPException(422, "Vui lòng nhập tên danh mục.")
-    category = Category(name=name, color=data.color)
+    category = Category(name=name, name_vi=data.name_vi, color=data.color)
     db.add(category)
     try:
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(409, "Tên danh mục đã tồn tại.")
-    return {"id": category.id, "name": category.name, "color": category.color, "count": 0}
+        raise HTTPException(409, "Tên tiếng Anh của danh mục đã tồn tại.")
+    return {"id": category.id, "name": category.name, "name_vi": category.name_vi,
+            "color": category.color, "count": 0}
 
 
 @app.put("/api/v1/admin/categories/{category_id}")
@@ -277,14 +279,14 @@ def rename_category(category_id: str, data: CategoryInput, db: DbSession = Depen
     category = db.get(Category, category_id)
     if not category:
         raise HTTPException(404, "Category not found")
-    category.name, category.color = data.name, data.color
+    category.name, category.name_vi, category.color = data.name, data.name_vi, data.color
     audit(db, user, None, "category_update", category.id)
     try:
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(409, "Category name already exists")
-    return {"id": category.id, "name": category.name, "color": category.color}
+        raise HTTPException(409, "Tên tiếng Anh của danh mục đã tồn tại.")
+    return {"id": category.id, "name": category.name, "name_vi": category.name_vi, "color": category.color}
 
 
 @app.delete("/api/v1/admin/categories/{category_id}", status_code=204)

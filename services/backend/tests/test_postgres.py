@@ -18,7 +18,7 @@ def require_postgres(request):
         pytest.skip("Explicit --postgres required")
 
 
-@pytest.mark.parametrize("start", ["base", "0007", "0008"])
+@pytest.mark.parametrize("start", ["base", "0007", "0008", "0009"])
 def test_empty_and_previous_revision_preserve_all_data(postgres_engine, monkeypatch, start):
     engine = postgres_engine
     monkeypatch.setattr("app.db.engine", engine)
@@ -55,7 +55,7 @@ def test_empty_and_previous_revision_preserve_all_data(postgres_engine, monkeypa
             for table, values in rows.items():
                 connection.execute(old.tables[table].insert().values(**values))
             connection.execute(old.tables["pois"].update().values(image_id="image"))
-            if start == "0008":
+            if start in {"0008", "0009"}:
                 connection.execute(old.tables["pois"].update().values(view_count=17, listen_count=9))
                 connection.execute(old.tables["poi_engagements"].insert().values(
                     session_hash="synthetic", poi_id="poi", kind="listen", recorded_at=stamp))
@@ -65,14 +65,14 @@ def test_empty_and_previous_revision_preserve_all_data(postgres_engine, monkeypa
     command.upgrade(config, "head")
     command.upgrade(config, "head")
     with engine.connect() as connection:
-        print("PostgreSQL rehearsal:", connection.exec_driver_sql("SHOW server_version").scalar(), start, "-> 0009")
-        assert connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar() == "0009"
+        print("PostgreSQL rehearsal:", connection.exec_driver_sql("SHOW server_version").scalar(), start, "-> 0010")
+        assert connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar() == "0010"
         assert compare_metadata(MigrationContext.configure(connection), Base.metadata) == []
         # Execute previous revision's projections on the expanded schema, including leases/media/sessions.
         for name, records in before.items():
             assert connection.execute(old.tables[name].select()).mappings().all() == records
         if start != "base":
-            assert connection.exec_driver_sql("SELECT view_count, listen_count FROM pois").one() == ((17, 9) if start == "0008" else (0, 0))
+            assert connection.exec_driver_sql("SELECT view_count, listen_count FROM pois").one() == ((17, 9) if start in {"0008", "0009"} else (0, 0))
             assert connection.exec_driver_sql("SELECT trigger_radius_m, auto_narration_enabled, narration_meta FROM pois").one() == (100, False, {})
         assert connection.exec_driver_sql(
             "SELECT count(*) FROM pg_class WHERE relnamespace = current_schema()::regnamespace "
@@ -99,6 +99,6 @@ def test_release_migration_lock_and_idempotent_retry(postgres_engine, monkeypatc
             holder.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": release.LOCK_ID})
             holder.commit()
     result = release.migrate("unused", "a" * 40, "synthetic-backup", tmp_path / "progress.json")
-    assert result["revision_before"] == "base" and result["revision_after"] == "0009"
+    assert result["revision_before"] == "base" and result["revision_after"] == "0010"
     result = release.migrate("unused", "a" * 40, "synthetic-backup")
-    assert result["revision_before"] == result["revision_after"] == "0009"
+    assert result["revision_before"] == result["revision_after"] == "0010"
