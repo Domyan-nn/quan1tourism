@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { BookOpen, LoaderCircle, Sparkles } from "lucide-react";
-import { uiMessage, api, ApiError } from "@quan1/api-client";
+import { uiMessage, api, ApiError, aiIssueMessage } from "@quan1/api-client";
 import type { AiJob, Language, WikipediaDraft } from "@quan1/contracts";
 
 type Props = {
@@ -27,7 +27,7 @@ export function WikipediaImport({
   } | null>(null);
   const [selected, setSelected] = useState(
     languages
-      .filter((item) => item.enabled && item.required)
+      .filter((item) => item.enabled && item.code === "vi")
       .map((item) => item.code),
   );
   const [generating, setGenerating] = useState(false);
@@ -37,6 +37,7 @@ export function WikipediaImport({
     () => localStorage.getItem("quan1-ai-job") ?? "",
   );
   const [jobState, setJobState] = useState("");
+  const [jobTimings, setJobTimings] = useState<AiJob["timings"]>();
   const callbacks = useRef({ onApply, onBusy });
   callbacks.current = { onApply, onBusy };
   useEffect(() => {
@@ -52,13 +53,27 @@ export function WikipediaImport({
         });
         if (controller.signal.aborted) return;
         setJobState(job.status);
+        setJobTimings(job.timings);
         if (job.status === "failed")
           throw new Error(
-            document.documentElement.lang === "en"
-              ? "AI generation failed. Check the worker and try again."
-              : "Tạo nội dung AI thất bại. Kiểm tra máy AI rồi thử lại.",
+            aiIssueMessage(
+              job.issue_codes?.[0] || job.error,
+              document.documentElement.lang,
+            ) ||
+              (document.documentElement.lang === "en"
+                ? "AI generation failed. Check the worker and try again."
+                : "Tạo nội dung AI thất bại. Kiểm tra máy AI rồi thử lại."),
           );
         if (job.status === "completed" && job.result) {
+          if (!job.reviewable)
+            throw new Error(
+              aiIssueMessage(
+                Object.values(job.validation ?? {}).flatMap(
+                  (r) => r.issues,
+                )[0] || "language_uncertain",
+                document.documentElement.lang,
+              ),
+            );
           callbacks.current.onApply(job.result);
           finish();
           return;
@@ -108,6 +123,7 @@ export function WikipediaImport({
 
   async function generate() {
     setError("");
+    setJobTimings(undefined);
     setGenerating(true);
     onBusy(true);
     let queued = false;
@@ -188,7 +204,7 @@ export function WikipediaImport({
                 <input
                   type="checkbox"
                   checked={selected.includes(item.code)}
-                  disabled={busy || item.required}
+                  disabled={busy || item.code === "vi"}
                   onChange={(event) =>
                     setSelected((current) =>
                       event.target.checked
@@ -253,6 +269,14 @@ export function WikipediaImport({
           </button>
         )}
       </div>
+      {generating && jobTimings && (
+        <p className="field-hint" role="status">
+          {vi ? "Đã chờ" : "Queue wait"}:{" "}
+          {Math.round(jobTimings.queue_wait_seconds ?? 0)}s
+          {jobTimings.generation_seconds != null &&
+            ` · ${vi ? "Đang xử lý" : "Processing"}: ${Math.round(jobTimings.generation_seconds)}s`}
+        </p>
+      )}
       {error && (
         <p className="notice error" role="alert">
           {uiMessage(error, vi ? "vi" : "en")}

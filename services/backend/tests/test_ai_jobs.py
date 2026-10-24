@@ -12,7 +12,7 @@ WORKER = {"Authorization": "Bearer " + TOKEN}
 
 
 def enqueue(client):
-    response = client.post("/api/v1/admin/ai/jobs", json={"url": URL})
+    response = client.post("/api/v1/admin/ai/jobs", json={"url": URL, "language_codes": ["vi", "en"]})
     assert response.status_code == 202, response.text
     return response.json()["id"]
 
@@ -27,14 +27,14 @@ def test_worker_queue_roundtrip_is_private_durable_and_never_publishes(env, upst
     assert not client.get("/api/v1/admin/ai/status").json()["ready"]
     assert client.post("/api/v1/worker/claim", json={}).status_code == 401
     assert client.post("/api/v1/worker/heartbeat", headers=WORKER,
-                       json={"model": "qwen3:4b", "ready": True}).status_code == 200
+                       json={"model": "qwen3:4b", "ready": True, "protocol": 3}).status_code == 200
     assert client.get("/api/v1/admin/ai/status").json()["ready"]
     job_id = enqueue(client)
     # No model inference happens on Render.
     assert not any(url.endswith("/api/chat") for url, _ in upstream["calls"])
-    claimed = client.post("/api/v1/worker/claim", headers=WORKER, json={}).json()["job"]
+    claimed = client.post("/api/v1/worker/claim", headers=WORKER, json={"protocol": 3}).json()["job"]
     assert claimed["id"] == job_id
-    assert client.post("/api/v1/worker/claim", headers=WORKER, json={}).json()["job"] is None
+    assert client.post("/api/v1/worker/claim", headers=WORKER, json={"protocol": 3}).json()["job"] is None
     assert client.get(f"/api/v1/admin/ai/jobs/{job_id}").json()["status"] == "running"
     payload = claimed["payload"]
     assert payload["categories"][0]["id"] == "test-category"
@@ -69,11 +69,11 @@ def test_expired_worker_lease_is_reclaimed_and_old_results_rejected(env, upstrea
     monkeypatch.setenv("AI_WORKER_TOKEN", TOKEN)
     login(client, "admin")
     job_id = enqueue(client)
-    first = client.post("/api/v1/worker/claim", headers=WORKER, json={}).json()["job"]
+    first = client.post("/api/v1/worker/claim", headers=WORKER, json={"protocol": 3}).json()["job"]
     with factory() as db:
         db.get(AiJob, job_id).lease_until = now() - timedelta(seconds=1)
         db.commit()
-    second = client.post("/api/v1/worker/claim", headers=WORKER, json={}).json()["job"]
+    second = client.post("/api/v1/worker/claim", headers=WORKER, json={"protocol": 3}).json()["job"]
     assert second["id"] == first["id"] and second["lease"] != first["lease"]
     endpoint = f"/api/v1/worker/jobs/{job_id}/complete"
     assert client.post(endpoint, headers=WORKER, json={"lease": first["lease"], "error": "x"}).status_code == 409
@@ -89,17 +89,17 @@ def test_retry_budget_and_queue_timeout_do_not_affect_public_readiness(env, upst
     login(client, "admin")
     job_id = enqueue(client)
     for _ in range(3):
-        assert client.post("/api/v1/worker/claim", headers=WORKER, json={}).json()["job"]["id"] == job_id
+        assert client.post("/api/v1/worker/claim", headers=WORKER, json={"protocol": 3}).json()["job"]["id"] == job_id
         with factory() as db:
             db.get(AiJob, job_id).lease_until = now() - timedelta(seconds=1)
             db.commit()
-    assert client.post("/api/v1/worker/claim", headers=WORKER, json={}).json()["job"] is None
+    assert client.post("/api/v1/worker/claim", headers=WORKER, json={"protocol": 3}).json()["job"] is None
     assert client.get(f"/api/v1/admin/ai/jobs/{job_id}").json()["status"] == "failed"
     expired = enqueue(client)
     with factory() as db:
         db.get(AiJob, expired).created_at = now() - timedelta(hours=25)
         db.commit()
-    assert client.post("/api/v1/worker/claim", headers=WORKER, json={}).json()["job"] is None
+    assert client.post("/api/v1/worker/claim", headers=WORKER, json={"protocol": 3}).json()["job"] is None
     assert client.get(f"/api/v1/admin/ai/jobs/{expired}").json()["status"] == "failed"
     assert client.get("/api/v1/health/ready").status_code == 200
 
@@ -184,8 +184,8 @@ def test_admin_pairs_hashed_worker_key_and_rotation_revokes_previous_key(env, mo
     with factory() as db:
         stored = db.get(AiWorker, "local").token_hash
         assert len(stored) == 64 and stored != TOKEN
-    assert client.post("/api/v1/worker/claim", headers=WORKER, json={}).status_code == 200
+    assert client.post("/api/v1/worker/claim", headers=WORKER, json={"protocol": 3}).status_code == 200
     replacement = "new-secret-32-characters-for-test-worker"
     assert client.post("/api/v1/admin/ai/worker-key", json={"token": replacement}).status_code == 200
-    assert client.post("/api/v1/worker/claim", headers=WORKER, json={}).status_code == 401
+    assert client.post("/api/v1/worker/claim", headers=WORKER, json={"protocol": 3}).status_code == 401
     assert client.post("/api/v1/worker/claim", headers={"Authorization": "Bearer " + replacement}, json={}).status_code == 200

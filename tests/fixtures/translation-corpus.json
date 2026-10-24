@@ -1,0 +1,39 @@
+{
+  "version": "synthetic-narrations-v1",
+  "notice": "Original synthetic fixtures for tests only, not verified tourism facts or production content.",
+  "sources": [
+    {
+      "id": "riverside",
+      "title": "Công viên ven sông thử nghiệm",
+      "text": "Công viên thử nghiệm nằm cạnh dòng sông và có những lối đi dành cho người đi bộ. Dọc đường có hàng cây và các ghế ngồi để khách nghỉ chân. Khách có thể quan sát dòng nước từ khu vực ven bờ, đọc bảng hướng dẫn và đi dạo trong khuôn viên. Nội dung này chỉ giới thiệu những đặc điểm đã được cung cấp, không nêu giá vé hoặc giờ mở cửa. Khi tham quan, mọi người cần giữ vệ sinh và tuân theo các biển hướng dẫn tại chỗ."
+    },
+    {
+      "id": "names",
+      "title": "Trung tâm văn hóa thử nghiệm",
+      "text": "Trung tâm thử nghiệm nằm gần các đường Phạm Ngọc Thạch, Nguyễn Văn Chiêm và Hai Bà Trưng. Trong khuôn viên có một sân chung và phòng sinh hoạt cộng đồng. Một bảng giới thiệu ghi tên các địa điểm Dinh Độc Lập, Bưu điện Trung tâm và Bến Bạch Đằng để người đọc tham khảo. Các tên riêng này cần được giữ chính xác khi dịch. Bài giới thiệu không khẳng định rằng các địa điểm trên nằm trong cùng khuôn viên. Khách có thể xem bảng thông tin và tìm hiểu các không gian được nêu trong tài liệu."
+    },
+    {
+      "id": "gallery",
+      "title": "Phòng trưng bày thử nghiệm",
+      "text": "Phòng trưng bày thử nghiệm giới thiệu một số hình ảnh về sinh hoạt trong thành phố. Các bức ảnh được đặt theo từng nhóm và có chú thích ngắn bên cạnh. Khách có thể đi theo lối tham quan để xem hình ảnh, đọc chú thích và quan sát cách sắp xếp của căn phòng. Nguồn thông tin không cho biết ngày thành lập, giá vé hoặc lịch hoạt động, vì vậy bài giới thiệu không bổ sung những chi tiết đó. Nội dung cần được người biên tập kiểm tra trước khi dùng cho một địa điểm thực tế."
+    }
+  ],
+  "language_samples": {
+    "vi": "Công viên nằm cạnh dòng sông và có lối đi bộ dưới hàng cây. Khách có thể ngồi nghỉ trên ghế, quan sát mặt nước và đọc bảng hướng dẫn trong khuôn viên.",
+    "en": "The park is located beside a river and has walking paths beneath the trees. Visitors can rest on the benches, watch the water and read the information signs around the grounds.",
+    "fr": "Le parc se trouve au bord d'une rivière et possède des allées sous les arbres. Les visiteurs peuvent se reposer sur les bancs, observer l'eau et lire les panneaux d'information dans le jardin.",
+    "de": "Der Park liegt an einem Fluss und verfügt über Spazierwege unter den Bäumen. Die Besucher können sich auf den Bänken ausruhen, das Wasser beobachten und die Informationstafeln auf dem Gelände lesen.",
+    "es": "El parque está situado junto a un río y cuenta con senderos bajo los árboles. Los visitantes pueden descansar en los bancos, observar el agua y leer los paneles informativos del recinto.",
+    "it": "Il parco si trova accanto a un fiume e offre sentieri sotto gli alberi. I visitatori possono riposare sulle panchine, osservare l'acqua e leggere i pannelli informativi presenti nell'area.",
+    "pt": "O parque fica junto a um rio e possui caminhos sob as árvores. Os visitantes podem descansar nos bancos, observar a água e ler os painéis de informação distribuídos pelo espaço.",
+    "id": "Taman ini terletak di tepi sungai dan memiliki jalur pejalan kaki di bawah pepohonan. Pengunjung dapat beristirahat di bangku, mengamati air sungai, dan membaca papan informasi di sekitar taman.",
+    "ms": "Taman ini terletak di tepi sungai dan mempunyai laluan pejalan kaki di bawah pokok. Para pengunjung boleh berehat di bangku, memerhatikan air sungai dan membaca papan maklumat di kawasan taman.",
+    "ar": "تقع الحديقة بجانب نهر وتضم ممرات للمشي تحت الأشجار. يمكن للزوار الاستراحة على المقاعد ومشاهدة المياه وقراءة لوحات المعلومات المنتشرة في أرجاء الحديقة.",
+    "ru": "Парк расположен рядом с рекой, а под деревьями проходят прогулочные дорожки. Посетители могут отдохнуть на скамейках, понаблюдать за водой и прочитать информационные таблички на территории парка.",
+    "th": "สวนสาธารณะตั้งอยู่ริมแม่น้ำและมีทางเดินใต้ร่มไม้ นักท่องเที่ยวสามารถนั่งพักบนม้านั่ง ชมสายน้ำ และอ่านป้ายข้อมูลที่อยู่ภายในบริเวณสวนได้",
+    "zh-CN": "这座公园位于河流旁边，树荫下设有人行步道。游客可以坐在长椅上休息，欣赏河水，并阅读园内的信息介绍牌，了解这里的环境和参观路线。",
+    "zh-TW": "這座公園位於河流旁邊，樹蔭下設有人行步道。遊客可以坐在長椅上休息，欣賞河水，並閱讀園內的資訊介紹牌，了解這裡的環境和參觀路線。",
+    "ja": "この公園は川のそばにあり、木々の下には散歩道があります。訪問者はベンチで休んだり、水の流れを眺めたり、園内の案内板を読んだりすることができます。",
+    "ko": "이 공원은 강 옆에 있으며 나무 아래에는 산책로가 있습니다. 방문객은 벤치에 앉아 휴식을 취하고 물의 흐름을 바라보며 공원 안에 있는 안내판을 읽을 수 있습니다."
+  }
+}

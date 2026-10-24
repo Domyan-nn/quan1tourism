@@ -3,10 +3,11 @@
 import os
 import secrets
 from datetime import timedelta, timezone
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy import and_, func, or_, select, update, text
 
 from .auth import digest, require
 from .content import audit
@@ -16,6 +17,8 @@ from .languages import languages
 from .models import AiJob, AiWorker, Category, now
 from .schemas import PoiInput, WikipediaImportInput
 from .wikipedia import get_article
+from .ai_policy import enforce_translation_policy, job_progress, translation_policy
+from .translation_validation import VALIDATOR_VERSION, safe_error, validate_draft_translations
 
 router = APIRouter(prefix="/api/v1")
 staff = require("editor", "reviewer", "admin")
@@ -67,17 +70,20 @@ def queue_status(db):
     worker = db.get(AiWorker, "local")
     online = bool(worker and aware(worker.seen_at) > now() - timedelta(seconds=90))
     return {
-        "mode": "worker", "ready": bool(online and worker.ready),
+        "mode": "worker", "ready": bool(online and worker.ready and worker.protocol >= 3),
         "worker_protocol": worker.protocol if worker else None,
         "model": worker.model if worker else "Ollama",
-        "message": ("Máy AI sẵn sàng" if worker.ready else "Model trên máy AI chưa sẵn sàng")
+        "translation_policy": translation_policy(),
+        "message": ("Cần cập nhật worker AI protocol 3" if worker.protocol < 3 else
+                    "Máy AI sẵn sàng" if worker.ready else "Model trên máy AI chưa sẵn sàng")
         if online else "Máy AI chưa kết nối. Mở Ollama và chạy trình nhận việc trên máy của bạn.",
     }
 
 
 def prepare_import(db, data):
     available = languages(db, enabled_only=True)
-    requested = set(data.language_codes) | {item.code for item in available if item.required}
+    requested = set(data.language_codes) or {"vi"}
+    requested.add("vi")  # Always prepare the Vietnamese draft for administrator review.
     if not requested or not requested.issubset({item.code for item in available}):
         raise HTTPException(422, "Chọn các ngôn ngữ đang được bật để tạo nội dung.")
     # Resolve redirects and the shared Wikidata identity BEFORE any inference.
@@ -91,6 +97,9 @@ def prepare_import(db, data):
     if matches:
         return None, matches[0]
     article = get_article(url)
+    from .translation_validation import article_locale
+    article["source_locale"] = article_locale(article)
+    enforce_translation_policy(sorted(code for code in requested if code != article["source_locale"]) or [article["source_locale"]])
     matches = find_duplicates(db, article["title"], {
         "url": article["url"], "wikidata_id": article["page"].get("pageprops", {}).get("wikibase_item"),
     })
@@ -100,14 +109,26 @@ def prepare_import(db, data):
     if not categories:
         raise HTTPException(409, "Hãy tạo ít nhất một danh mục trước khi nhập địa điểm.")
     return {
-        "article": article, "categories": categories,
+        "article": article, "categories": categories, "validation_contract": VALIDATOR_VERSION,
         "languages": [{"code": item.code, "name": item.native_name}
                       for item in available if item.code in requested],
     }, None
 
 
 def job_data(job):
-    return {"id": job.id, "status": job.status, "result": job.result, "error": job.error}
+    execution = job.payload.get("execution", {})
+    validation = execution.get("validation")
+    if job.status == "completed" and job.result and job.result.get("draft"):
+        reports = validate_draft_translations(job.payload["article"], job.result["draft"]["translations"])
+        validation = {code: report.to_dict() for code, report in reports.items()}
+    reviewable = bool(job.status == "completed" and validation and
+                      all(r.get("status") == "passed" for r in validation.values()))
+    codes = list(dict.fromkeys(safe_error(code) for code in (
+        execution.get("issue_codes", []) + [c for r in (validation or {}).values() for c in r.get("issues", [])]
+        + ([job.error] if job.error else []))))
+    return {"id": job.id, "status": job.status, "result": job.result,
+            "error": safe_error(job.error) if job.error else "", "issue_codes": codes,
+            "validation": validation, "reviewable": reviewable, "timings": job_progress(job)}
 
 
 @router.post("/admin/ai/jobs", status_code=202)
@@ -118,8 +139,8 @@ def enqueue(data: WikipediaImportInput, db=Depends(get_db), user=Depends(staff))
         AiJob.requested_by == user.id, AiJob.status.in_(("queued", "running")),
         AiJob.created_at > now() - timedelta(hours=24),
     ))
-    if active >= 3:
-        raise HTTPException(429, "Bạn đã có 3 yêu cầu AI đang chờ. Hãy chờ hoàn tất trước khi tạo thêm.")
+    if active >= translation_policy()["pending_limit"]:
+        raise HTTPException(429, "batch_limited")
     payload, existing = prepare_import(db, data)
     if existing:
         raise HTTPException(409, f"Địa điểm đã tồn tại: {existing['name']}. Mở địa điểm hiện có để kiểm tra.")
@@ -144,7 +165,9 @@ class Heartbeat(BaseModel):
     model_config = ConfigDict(extra="forbid")
     model: str = Field(min_length=1, max_length=100)
     ready: bool
-    protocol: int = Field(default=1, ge=1, le=2)
+    protocol: int = Field(default=1, ge=1, le=3)
+    job_id: str | None = Field(default=None, max_length=32)
+    lease: str | None = Field(default=None, max_length=100)
 
 
 @router.post("/worker/heartbeat", dependencies=[Depends(worker_auth)])
@@ -156,6 +179,12 @@ def heartbeat(data: Heartbeat, db=Depends(get_db)):
         db.add(worker)
     worker.model, worker.ready, worker.seen_at = data.model, data.ready, now()
     worker.protocol = data.protocol
+    if data.job_id and data.lease:
+        job = db.scalar(select(AiJob).where(AiJob.id == data.job_id).with_for_update())
+        if (job and job.status == "running" and job.lease_until and aware(job.lease_until) >= now()
+                and secrets.compare_digest(job.lease_hash or "", digest(data.lease))):
+            job.payload = {**job.payload, "execution": {**job.payload.get("execution", {}),
+                           "last_heartbeat_at": now().isoformat()}}
     db.commit()
     return {"status": "ok"}
 
@@ -165,35 +194,52 @@ def expire_jobs(db):
         AiJob.status.in_(("queued", "running")),
         or_(AiJob.created_at < now() - timedelta(hours=24),
             and_(AiJob.status == "running", AiJob.lease_until < now(), AiJob.attempts >= 3)),
-    ).values(status="failed", error="Yêu cầu hết hạn do máy AI mất kết nối. Hãy tạo lại.", updated_at=now()))
+    ).values(status="failed", error="worker_unavailable", updated_at=now()))
     db.commit()
 
 
 class ClaimInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    protocol: int = Field(default=1, ge=1, le=2)
+    protocol: int = Field(default=1, ge=1, le=3)
 
 
 @router.post("/worker/claim", dependencies=[Depends(worker_auth)])
 def claim(data: ClaimInput, db=Depends(get_db)):
     expire_jobs(db)
+    # A single live claim globally, including multiple accidentally started PCs.
+    if db.bind.dialect.name == "postgresql" and not db.scalar(text("SELECT pg_try_advisory_xact_lock(716103046)")):
+        return {"job": None}
+    if db.scalar(select(AiJob.id).where(AiJob.status == "running", AiJob.lease_until >= now()).limit(1)):
+        return {"job": None}
     eligible = or_(AiJob.status == "queued", and_(AiJob.status == "running", AiJob.lease_until < now()))
     if data.protocol < 2:
         kind = AiJob.payload["kind"].as_string()
         eligible = and_(eligible, or_(kind.is_(None), kind != "supplement"))
+    if data.protocol < 3:
+        eligible = and_(eligible, AiJob.payload["validation_contract"].as_string().is_(None))
     job_id = db.scalar(select(AiJob.id).where(eligible).order_by(AiJob.created_at).limit(1))
     if not job_id:
         return {"job": None}
+    candidate = db.get(AiJob, job_id)
+    started = now()
+    execution = {**candidate.payload.get("execution", {}), "started_at": started.isoformat(),
+                 "queue_wait_seconds": round(max(0, (started - aware(candidate.created_at)).total_seconds()), 3)}
     lease = secrets.token_urlsafe(32)
     changed = db.execute(update(AiJob).execution_options(synchronize_session=False).where(AiJob.id == job_id, eligible).values(
         status="running", lease_hash=digest(lease), lease_until=now() + timedelta(seconds=LEASE_SECONDS),
-        attempts=AiJob.attempts + 1, updated_at=now(),
+        attempts=AiJob.attempts + 1, updated_at=now(), payload={**candidate.payload, "execution": execution},
     ))
     db.commit()
     if changed.rowcount != 1:
         return {"job": None}
     job = db.get(AiJob, job_id)
     return {"job": {"id": job.id, "lease": lease, "payload": job.payload}}
+
+
+class Timings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    generation_seconds: float | None = Field(default=None, ge=0, le=900)
+    validation_seconds: float | None = Field(default=None, ge=0, le=120)
 
 
 class Completion(BaseModel):
@@ -205,6 +251,15 @@ class Completion(BaseModel):
     error: str = Field(default="", max_length=1000)
     translation: dict | None = None
     model: str = Field(default="", max_length=100)
+    issue_codes: list[str] = Field(default_factory=list, max_length=15)
+    validation: dict | None = None  # Diagnostic only; NEVER trusted for acceptance.
+    timings: Timings = Field(default_factory=Timings)
+    prompt_version: str = Field(default="", max_length=80)
+    output_mode: Literal["schema", "json", "unconstrained"] = "schema"
+    done_reason: Literal["stop", "length", "unknown"] = "unknown"
+    locale: str | None = Field(default=None, max_length=35)
+    source_revision: int | None = None
+    source_hash: str | None = Field(default=None, max_length=64)
 
 
 @router.post("/worker/jobs/{job_id}/complete", dependencies=[Depends(worker_auth)])
@@ -213,26 +268,35 @@ def complete(job_id: str, data: Completion, db=Depends(get_db)):
     if not job or not secrets.compare_digest(job.lease_hash or "", digest(data.lease)):
         raise HTTPException(409, "Lượt xử lý AI không còn hợp lệ.")
     if job.status in ("completed", "failed"):
-        return {"status": job.status}  # Retry after a lost HTTP response is harmless.
+        return {"status": job.status, "issue_codes": job.payload.get("execution", {}).get("issue_codes", [])}
     if not job.lease_until or aware(job.lease_until) < now():
         raise HTTPException(409, "Lượt xử lý AI đã hết hạn.")
-    result = None
+    payload = job.payload
+    for key in ("locale", "source_revision", "source_hash"):
+        received = getattr(data, key)
+        if (received is not None and received != payload.get(key)) or (
+            payload.get("kind") == "supplement" and payload.get("validation_contract") and received is None
+        ):
+            raise HTTPException(409, "Result identity differs from the claimed translation job")
+    result, reports, issues = None, {}, []
     if data.error:
-        # Display only a generic error; never trust/log exceptions containing credentials.
-        error = "Máy AI chưa tạo được nội dung. Kiểm tra Ollama rồi thử lại."
+        issues = list(dict.fromkeys([safe_error(data.error)] + [safe_error(c) for c in data.issue_codes]))
     elif job.payload.get("kind") == "supplement":
-        from .narration_jobs import quality_issues
-        from .schemas import TranslationInput
+        from .narration_jobs import validate_job_translation, source_hash, translation_hash
+        from .models import Poi
 
-        try:
-            translation = TranslationInput.model_validate(data.translation)
-            issues = quality_issues(job.payload["locale"], translation)
-        except ValueError:
-            issues = ["invalid_schema"]
-        error = "AI output needs regeneration or manual correction: " + ", ".join(issues) if issues else ""
-        if not error:
-            result = {"translation": translation.model_dump(), "locale": job.payload["locale"],
+        validation = validate_job_translation(payload, data.translation)
+        reports = validation.to_dict()
+        issues = validation.issues
+        poi = db.get(Poi, payload["poi_id"])
+        if not poi or source_hash(poi) != payload["source_hash"]:
+            issues = ["source_changed"]
+        elif translation_hash(poi.translations.get(payload["locale"], {})) != payload["target_hash"]:
+            issues = ["target_changed"]
+        if not issues:
+            result = {"translation": data.translation, "locale": payload["locale"],
                       "model": data.model, "generated_at": now().isoformat(), "review_required": True,
+                      "validation": reports,
                       "warnings": ["Verify target language and facts; automatic checks cannot establish accuracy"]}
     else:
         draft, payload = data.draft, job.payload
@@ -245,20 +309,32 @@ def complete(job_id: str, data: Completion, db=Depends(get_db)):
             or any(not tr.title.strip() or not tr.text.strip() for tr in draft.translations.values())
         ):
             raise HTTPException(422, "Bản nháp AI không khớp yêu cầu.")
+        validations = validate_draft_translations(payload["article"], draft.translations)
+        reports = {code: report.to_dict() for code, report in validations.items()}
+        issues = list(dict.fromkeys(c for report in validations.values() for c in report.issues))
         try:
             ensure_unique(db, draft.name, draft.source.model_dump())
-            error = ""
         except HTTPException as exc:
-            error = exc.detail
-        if not error:
+            raise HTTPException(exc.status_code, "Content conflicts with an existing place") from None
+        if not issues:
             result = {"draft": draft.model_dump(), "missing_fields": data.missing_fields,
-                      "elapsed_seconds": data.elapsed_seconds, "existing_poi": None}
+                      "elapsed_seconds": data.elapsed_seconds, "existing_poi": None,
+                      "validation": reports, "review_required": True}
+    if not data.error and payload.get("validation_contract") and data.done_reason != "stop":
+        issues = list(dict.fromkeys(["incomplete_generation"] + issues))
+    if issues:
+        result = None
+    error = issues[0] if issues else ""
+    execution = {**payload.get("execution", {}), **data.timings.model_dump(exclude_none=True),
+                 "issue_codes": issues, "validation": reports or None,
+                 "prompt_version": data.prompt_version, "output_mode": data.output_mode}
     # Compare-and-set also protects against a worker finishing while its lease is reclaimed.
     changed = db.execute(update(AiJob).execution_options(synchronize_session=False).where(
         AiJob.id == job.id, AiJob.status == "running", AiJob.lease_hash == digest(data.lease),
         AiJob.lease_until >= now(),
-    ).values(status="failed" if error else "completed", result=result, error=error, updated_at=now()))
+    ).values(status="failed" if error else "completed", result=result, error=error, updated_at=now(),
+             payload={**payload, "execution": execution}))
     db.commit()
     if changed.rowcount != 1:
         raise HTTPException(409, "Lượt xử lý AI đã thay đổi.")
-    return {"status": "failed" if error else "completed"}
+    return {"status": "failed" if error else "completed", "issue_codes": issues}

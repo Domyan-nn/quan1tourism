@@ -76,6 +76,14 @@ export interface AiJob {
   status: "queued" | "running" | "completed" | "failed";
   result: WikipediaDraft | null;
   error: string;
+  issue_codes?: string[];
+  reviewable?: boolean;
+  validation?: Record<string, { status: string; issues: string[] }> | null;
+  timings?: {
+    queue_wait_seconds?: number | null;
+    generation_seconds?: number | null;
+    total_seconds?: number;
+  };
 }
 export interface Poi {
   id: string;

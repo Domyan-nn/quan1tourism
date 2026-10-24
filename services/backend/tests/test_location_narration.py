@@ -68,9 +68,10 @@ def queue(client, poi, codes=None, **extra):
 
 
 def complete(client, text=ENGLISH):
-    claimed = client.post("/api/v1/worker/claim", headers=WORKER, json={"protocol": 2}).json()["job"]
+    claimed = client.post("/api/v1/worker/claim", headers=WORKER, json={"protocol": 3}).json()["job"]
     response = client.post(f"/api/v1/worker/jobs/{claimed['id']}/complete", headers=WORKER, json={
         "lease": claimed["lease"], "translation": {"title": "English narration", "text": text}, "model": "mock-model",
+        **{key: claimed['payload'][key] for key in ('locale', 'source_revision', 'source_hash')}, "done_reason": "stop",
     })
     assert response.status_code == 200, response.text
     return claimed
@@ -115,6 +116,8 @@ def test_supplement_queue_is_deduplicated_private_reviewed_and_never_creates_pla
 def test_partial_failure_retry_disabled_language_and_source_conflict(env, monkeypatch):
     client, factory, _ = env
     monkeypatch.setenv("AI_WORKER_TOKEN", TOKEN)
+    monkeypatch.setenv("AI_TRANSLATION_BATCH_LIMIT", "2")
+    monkeypatch.setenv("AI_TRANSLATION_VERIFIED_LOCALES", "en,ms")
     poi, payload = setup_poi(client)
     language = {"code": "ms", "name": "Malay", "native_name": "Bahasa Melayu", "speech_locale": "ms-MY"}
     assert client.post("/api/v1/admin/languages", json=language).status_code == 201
@@ -147,7 +150,7 @@ def test_ollama_supplement_generation_uses_saved_source_only(monkeypatch):
     monkeypatch.setattr("app.narration_generation.fetch_json", fake)
     result = generate_translation({"locale": "en", "language_name": "English", "source": {"source_text": SOURCE}})
     assert result["translation"]["text"] == ENGLISH
-    assert calls[0][1]["local"] and calls[0][1]["timeout"] == 600
+    assert calls[0][1]["local"] and calls[0][1]["timeout"] == 120
 
 
 def test_postgres_concurrent_supplement_requests_share_one_active_job(env, request):

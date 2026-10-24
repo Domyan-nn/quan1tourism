@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import { mockSpeech } from "./speech";
 import type { Page } from "@playwright/test";
+import { readFileSync } from "node:fs";
 
 const origin = "http://127.0.0.1:5184";
 const text =
@@ -357,7 +358,7 @@ test("Unicode category survives admin create/rename and the public visitor card 
   expect(publicCategories.every((c: object) => !("count" in c))).toBe(true);
 });
 
-test("admin supplements an existing place through worker protocol 2 and reviews a private draft", async ({
+test("admin supplements an existing place through worker protocol 3 and reviews a private draft", async ({
   page,
 }, info) => {
   await mockSpeech(page);
@@ -369,6 +370,9 @@ test("admin supplements an existing place through worker protocol 2 and reviews 
     page.getByRole("heading", { name: "Địa điểm", exact: true }),
   ).toBeVisible();
   const name = `Bổ sung AI ${info.project.name} ${Date.now()}`;
+  const translationSource = JSON.parse(
+    readFileSync("tests/fixtures/translation-corpus.json", "utf8"),
+  ).sources[0].text;
   const response = await page.request.post("/api/v1/admin/pois", {
     headers: { "X-Requested-With": "Quan1Admin" },
     data: {
@@ -377,7 +381,7 @@ test("admin supplements an existing place through worker protocol 2 and reviews 
       address: "Quận 1",
       status: "published",
       translations: {
-        vi: { title: name, text },
+        vi: { title: name, text: translationSource },
         en: { title: name, text: "Existing English narration must stay." },
       },
     },
@@ -397,7 +401,7 @@ test("admin supplements an existing place through worker protocol 2 and reviews 
     exact: true,
   });
   const row = region.getByRole("row").filter({ hasText: "Français" });
-  await expect(row.getByRole("checkbox")).toBeChecked();
+  await expect(row.getByRole("checkbox")).not.toBeChecked();
   await expect(
     region
       .getByRole("row")
@@ -418,7 +422,7 @@ test("admin supplements an existing place through worker protocol 2 and reviews 
   const claimed = await (
     await page.request.post("/api/v1/worker/claim", {
       headers: workerHeaders,
-      data: { protocol: 2 },
+      data: { protocol: 3 },
     })
   ).json();
   expect(claimed.job.payload.poi_id).toBe(saved.id);
@@ -430,12 +434,17 @@ test("admin supplements an existing place through worker protocol 2 and reviews 
       headers: workerHeaders,
       data: {
         lease: claimed.job.lease,
+        locale: claimed.job.payload.locale,
+        source_revision: claimed.job.payload.source_revision,
+        source_hash: claimed.job.payload.source_hash,
+        done_reason: "stop",
         translation: { title: "Présentation vérifiée", text: french },
         model: "mock-ollama",
       },
     },
   );
   expect(completion.status()).toBe(200);
+  expect((await completion.json()).status).toBe("completed");
   await row
     .getByRole("button", { name: "Xem & chỉnh bản AI", exact: true })
     .click();

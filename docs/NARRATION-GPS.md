@@ -54,15 +54,17 @@ Không cam kết mọi máy có đủ giọng. Chất lượng, pause và autopl
 
 ## Bổ sung bản dịch địa điểm đã có
 
-Admin mở bước **Nội dung đa ngôn ngữ** → bảng **Thuyết minh đa ngôn ngữ**. Lưu nguồn VI đã xác minh, xác nhận nguồn rồi chọn một/nhiều locale. Mặc định chọn ngôn ngữ bật, trống cả tiêu đề và bài; không chọn bản đã có hay ngôn ngữ tắt. Có thử lại riêng locale thất bại và xác nhận khi tạo lại bản có sẵn. Không tạo POI hoặc thay ID.
+Hướng dẫn mới, benchmark và giới hạn model: [AI-TRANSLATION-RELIABILITY.md](AI-TRANSLATION-RELIABILITY.md).
 
-Mỗi locale là một AiJob bền vững trong queue hiện có, HTTP 202 nhanh. Payload `supplement` tách khỏi Wikipedia tạo mới. Nguồn gồm bài VI, thông tin POI và provenance đã lưu; không gọi Internet đoán dữ kiện. Prompt yêu cầu bài đầy đủ, khoảng một phút khi nguồn đủ, không coi số từ là thời lượng chính xác. Mỗi locale timeout 600 giây, lease 900 giây/retry hiện có.
+Admin mở bước **Nội dung đa ngôn ngữ** → bảng **Thuyết minh đa ngôn ngữ**. Lưu nguồn VI đã xác minh, xác nhận nguồn rồi chủ động chọn locale; mặc định chưa chọn đích. Batch mặc định 1, muốn nhiều hơn phải cấu hình phạm vi đã kiểm chứng trên backend. Có thử lại riêng locale thất bại và xác nhận khi tạo lại bản có sẵn. Không tạo POI hoặc thay ID.
 
-Kiểm tra schema, độ dài ≥240 ký tự (120 cho zh/ja/ko), ký tự hỏng, lặp rõ và script có thể nhận biết. Các kiểm tra không chứng minh dịch đúng nghĩa/ngôn ngữ Latin; mọi kết quả đạt kỹ thuật vẫn **chờ duyệt**, không tự ghi POI/công bố. Chuỗi không rỗng không mặc nhiên thành công. Thành công locale khác được giữ khi một locale lỗi; có thể nhập tay hoặc tạo lại.
+Mỗi locale là một AiJob trong queue hiện có, HTTP 202. Payload `supplement` dùng bài VI đã lưu và source locale/revision/hash, không gọi Internet đoán dữ kiện. Prompt chỉ yêu cầu dịch đủ ý, không sáng tác thêm để đủ thời lượng. Timeout suy luận mặc định 120s, lease 900s; thời gian chờ queue được tính riêng.
+
+Validator chung kiểm tra schema, Unicode, lặp, sao chép nguồn, ngôn ngữ bằng detector offline và tỷ lệ hệ chữ. Không còn ngưỡng 240 ký tự cố định. Kết quả `uncertain` hoặc bị từ chối không được review/lưu qua nhánh AI. Mọi kết quả qua kiểm tra vẫn **chờ duyệt**, không tự ghi POI/công bố. Thành công locale khác được giữ khi một locale lỗi; có thể nhập tay hoặc tạo lại.
 
 **Xem & chỉnh bản AI** cho sửa/nghe thử. Xác nhận sự thật/ngôn ngữ rồi **Lưu bản dịch vào nháp**. Lưu source locale/revision/hash, model, thời gian tạo/duyệt và stale trong narration_meta, loại khỏi API công khai. Source/target hash và optimistic revision ngăn job cũ ghi đè: nguồn hoặc đích thay đổi trả 409. Sửa nguồn đánh dấu bản dịch cũ stale, không xóa. PostgreSQL khóa POI khi tạo/áp dụng, gộp job đang active cùng POI/locale.
 
-PC worker cần **protocol 2**, script hiện tại `scripts/ollama_worker.py`. Claim không version là protocol 1 và chỉ nhận Wikipedia, không nuốt supplement. Heartbeat báo protocol. Người phụ trách cập nhật/restart PC; cloud không tự cập nhật. Worker chỉ HTTPS ra ngoài, không mở Ollama Internet. Offline giữ job chờ với giới hạn hết hạn 24 giờ hiện hữu; readiness công khai không phụ thuộc worker.
+PC worker cần **protocol 3**, script `scripts/ollama_worker.py`; worker protocol cũ không nhận job validation contract mới. Người phụ trách cập nhật dependency/restart PC; cloud không tự cập nhật. Worker chỉ HTTPS ra ngoài, không mở Ollama Internet. Offline giữ job chờ với giới hạn hết hạn 24 giờ; readiness công khai không phụ thuộc worker.
 
 ## Danh mục và sửa dữ liệu
 

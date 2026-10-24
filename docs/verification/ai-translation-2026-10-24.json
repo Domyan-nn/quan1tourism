@@ -1,0 +1,744 @@
+{
+  "date": "2026-10-24",
+  "purpose": "Sanitized evidence; no business text, credentials or place/job IDs",
+  "base_commit": "1810c03fceae045cba9d70ed00c571393677c1a7",
+  "working_tree_uncommitted": true,
+  "production_deployed": false,
+  "production_data_mutated": false,
+  "model_changed_or_downloaded": false,
+  "model_acceptance": {
+    "approved_locales": [],
+    "human_semantic_reviewed_locales": [],
+    "full_42_run_benchmark_executed": false,
+    "full_stage_status": "blocked_by_pilot"
+  },
+  "benchmarks": {
+    "translation-benchmark-pilot.json": {
+      "commit": "1810c03fceae045cba9d70ed00c571393677c1a7",
+      "working_tree_dirty": true,
+      "timestamp": "2026-10-24T11:09:32.369857+00:00",
+      "stage": "pilot",
+      "status": "finished",
+      "model": "qwen3:4b",
+      "model_digest": "359d7dd4bcdab3d86b87d73ac27966f4dbb9f5efdfcc75d34a8764a09474fae7",
+      "ollama_version": "0.40.8",
+      "prompt_version": "faithful-translation-v2.1",
+      "validator_version": "translation-v2.0",
+      "detector_version": "py3langid-0.4.0-bundled-139",
+      "corpus_sha256": "f483a7c80ce184e4cecbed97e622346c8d815ca6050d4feaafc375b64a8d6291",
+      "full_benchmark_allowed": false,
+      "automatically_passed_locales": [],
+      "human_reviewed_locales": [],
+      "rows": [
+        {
+          "source_id": "riverside",
+          "source_locale": "vi",
+          "target_locale": "fr",
+          "source_chars": 413,
+          "mode": "baseline",
+          "seed": 42,
+          "queue_wait_seconds": 0,
+          "inference_timeout_seconds": 45,
+          "generation_seconds": 18.172,
+          "validation_seconds": 1.234,
+          "total_seconds": 19.406,
+          "done_reason": "stop",
+          "output_truncated": false,
+          "manual_review": {
+            "status": "not_reviewed",
+            "reader_language": null,
+            "meaning_preserved": null,
+            "no_invented_facts": null,
+            "notes": null
+          },
+          "issue_codes": [
+            "source_copy",
+            "wrong_language"
+          ],
+          "validation_status": "rejected",
+          "request_options": {
+            "temperature": 0,
+            "num_ctx": 8192,
+            "num_predict": 3000
+          },
+          "request_sha256": "5f00c3058e7054350bd302c9b693c452d7b2fa365fee0744a66165bc4bfcb791"
+        },
+        {
+          "source_id": "riverside",
+          "source_locale": "vi",
+          "target_locale": "fr",
+          "source_chars": 413,
+          "mode": "worker",
+          "seed": 42,
+          "queue_wait_seconds": 0,
+          "inference_timeout_seconds": 45,
+          "generation_seconds": 14.782,
+          "validation_seconds": 0.0,
+          "total_seconds": 14.782,
+          "done_reason": "stop",
+          "output_truncated": false,
+          "manual_review": {
+            "status": "not_reviewed",
+            "reader_language": null,
+            "meaning_preserved": null,
+            "no_invented_facts": null,
+            "notes": null
+          },
+          "issue_codes": [
+            "source_copy",
+            "wrong_language"
+          ],
+          "validation_status": "rejected",
+          "request_options": {
+            "temperature": 0.7,
+            "top_p": 0.8,
+            "top_k": 20,
+            "min_p": 0,
+            "num_ctx": 8192,
+            "num_predict": 1600,
+            "seed": 42
+          },
+          "request_sha256": "3013d13568d01a94ef28c7089a13a7d4854d677f470b906d218c74fc40666270"
+        },
+        {
+          "source_id": "riverside",
+          "source_locale": "vi",
+          "target_locale": "fr",
+          "source_chars": 413,
+          "mode": "direct",
+          "seed": 42,
+          "queue_wait_seconds": 0,
+          "inference_timeout_seconds": 45,
+          "generation_seconds": 11.438,
+          "validation_seconds": 0.0,
+          "total_seconds": 11.438,
+          "done_reason": "stop",
+          "output_truncated": false,
+          "manual_review": {
+            "status": "not_reviewed",
+            "reader_language": null,
+            "meaning_preserved": null,
+            "no_invented_facts": null,
+            "notes": null
+          },
+          "issue_codes": [
+            "source_copy",
+            "wrong_language"
+          ],
+          "validation_status": "rejected",
+          "request_options": {
+            "temperature": 0.7,
+            "top_p": 0.8,
+            "top_k": 20,
+            "min_p": 0,
+            "num_ctx": 8192,
+            "num_predict": 1600,
+            "seed": 42
+          },
+          "request_sha256": "3013d13568d01a94ef28c7089a13a7d4854d677f470b906d218c74fc40666270"
+        },
+        {
+          "source_id": "riverside",
+          "source_locale": "vi",
+          "target_locale": "fr",
+          "source_chars": 413,
+          "mode": "plain",
+          "seed": 42,
+          "queue_wait_seconds": 0,
+          "inference_timeout_seconds": 45,
+          "generation_seconds": null,
+          "validation_seconds": null,
+          "total_seconds": 45.016,
+          "done_reason": null,
+          "output_truncated": false,
+          "manual_review": {
+            "status": "not_reviewed",
+            "reader_language": null,
+            "meaning_preserved": null,
+            "no_invented_facts": null,
+            "notes": null
+          },
+          "issue_codes": [
+            "model_timeout"
+          ],
+          "validation_status": "error"
+        },
+        {
+          "source_id": "riverside",
+          "source_locale": "vi",
+          "target_locale": "ar",
+          "source_chars": 413,
+          "mode": "baseline",
+          "seed": 42,
+          "queue_wait_seconds": 0,
+          "inference_timeout_seconds": 45,
+          "generation_seconds": 13.375,
+          "validation_seconds": 0.016,
+          "total_seconds": 13.391,
+          "done_reason": "stop",
+          "output_truncated": false,
+          "manual_review": {
+            "status": "not_reviewed",
+            "reader_language": null,
+            "meaning_preserved": null,
+            "no_invented_facts": null,
+            "notes": null
+          },
+          "issue_codes": [
+            "source_copy",
+            "wrong_script",
+            "wrong_language"
+          ],
+          "validation_status": "rejected",
+          "request_options": {
+            "temperature": 0,
+            "num_ctx": 8192,
+            "num_predict": 3000
+          },
+          "request_sha256": "438008d623ceab3a7cb3ba25754b382b360c8e1289c0145af5e669d424d44488"
+        },
+        {
+          "source_id": "riverside",
+          "source_locale": "vi",
+          "target_locale": "ar",
+          "source_chars": 413,
+          "mode": "worker",
+          "seed": 42,
+          "queue_wait_seconds": 0,
+          "inference_timeout_seconds": 45,
+          "generation_seconds": 14.203,
+          "validation_seconds": 0.0,
+          "total_seconds": 14.203,
+          "done_reason": "stop",
+          "output_truncated": false,
+          "manual_review": {
+            "status": "not_reviewed",
+            "reader_language": null,
+            "meaning_preserved": null,
+            "no_invented_facts": null,
+            "notes": null
+          },
+          "issue_codes": [
+            "source_copy",
+            "wrong_script",
+            "wrong_language"
+          ],
+          "validation_status": "rejected",
+          "request_options": {
+            "temperature": 0.7,
+            "top_p": 0.8,
+            "top_k": 20,
+            "min_p": 0,
+            "num_ctx": 8192,
+            "num_predict": 1600,
+            "seed": 42
+          },
+          "request_sha256": "4c16bb35145ff8a73afe37553460f20159374d94088a9cb154da478dff1b2fb1"
+        },
+        {
+          "source_id": "riverside",
+          "source_locale": "vi",
+          "target_locale": "ar",
+          "source_chars": 413,
+          "mode": "direct",
+          "seed": 42,
+          "queue_wait_seconds": 0,
+          "inference_timeout_seconds": 45,
+          "generation_seconds": 12.484,
+          "validation_seconds": 0.0,
+          "total_seconds": 12.484,
+          "done_reason": "stop",
+          "output_truncated": false,
+          "manual_review": {
+            "status": "not_reviewed",
+            "reader_language": null,
+            "meaning_preserved": null,
+            "no_invented_facts": null,
+            "notes": null
+          },
+          "issue_codes": [
+            "source_copy",
+            "wrong_script",
+            "wrong_language"
+          ],
+          "validation_status": "rejected",
+          "request_options": {
+            "temperature": 0.7,
+            "top_p": 0.8,
+            "top_k": 20,
+            "min_p": 0,
+            "num_ctx": 8192,
+            "num_predict": 1600,
+            "seed": 42
+          },
+          "request_sha256": "4c16bb35145ff8a73afe37553460f20159374d94088a9cb154da478dff1b2fb1"
+        },
+        {
+          "source_id": "riverside",
+          "source_locale": "vi",
+          "target_locale": "ar",
+          "source_chars": 413,
+          "mode": "plain",
+          "seed": 42,
+          "queue_wait_seconds": 0,
+          "inference_timeout_seconds": 45,
+          "generation_seconds": null,
+          "validation_seconds": null,
+          "total_seconds": 45.031,
+          "done_reason": null,
+          "output_truncated": false,
+          "manual_review": {
+            "status": "not_reviewed",
+            "reader_language": null,
+            "meaning_preserved": null,
+            "no_invented_facts": null,
+            "notes": null
+          },
+          "issue_codes": [
+            "model_timeout"
+          ],
+          "validation_status": "error"
+        }
+      ]
+    },
+    "translation-benchmark-controls.json": {
+      "commit": "1810c03fceae045cba9d70ed00c571393677c1a7",
+      "working_tree_dirty": true,
+      "timestamp": "2026-10-24T11:19:55.943160+00:00",
+      "stage": "pilot",
+      "status": "finished",
+      "model": "qwen3:4b",
+      "model_digest": "359d7dd4bcdab3d86b87d73ac27966f4dbb9f5efdfcc75d34a8764a09474fae7",
+      "ollama_version": "0.40.8",
+      "prompt_version": "faithful-translation-v2.1",
+      "validator_version": "translation-v2.0",
+      "detector_version": "py3langid-0.4.0-bundled-139",
+      "corpus_sha256": "1b6c9f28cfbd3cb9443aa4e9dbb4ae826f624144527313273e1a94fd1ca1f6f7",
+      "full_benchmark_allowed": false,
+      "automatically_passed_locales": [],
+      "human_reviewed_locales": [],
+      "rows": [
+        {
+          "source_id": "riverside",
+          "source_locale": "vi",
+          "target_locale": "fr",
+          "source_chars": 413,
+          "mode": "baseline",
+          "seed": 42,
+          "queue_wait_seconds": 0,
+          "inference_timeout_seconds": 30,
+          "generation_seconds": 18.016,
+          "validation_seconds": 0.906,
+          "total_seconds": 18.922,
+          "done_reason": "stop",
+          "output_truncated": false,
+          "manual_review": {
+            "status": "not_reviewed",
+            "reader_language": null,
+            "meaning_preserved": null,
+            "no_invented_facts": null,
+            "notes": null
+          },
+          "issue_codes": [
+            "source_copy",
+            "wrong_language"
+          ],
+          "validation_status": "rejected",
+          "request_options": {
+            "temperature": 0,
+            "num_ctx": 8192,
+            "num_predict": 3000
+          },
+          "request_sha256": "5f00c3058e7054350bd302c9b693c452d7b2fa365fee0744a66165bc4bfcb791"
+        },
+        {
+          "source_id": "riverside",
+          "source_locale": "vi",
+          "target_locale": "fr",
+          "source_chars": 413,
+          "mode": "temperature_only",
+          "seed": 42,
+          "queue_wait_seconds": 0,
+          "inference_timeout_seconds": 30,
+          "generation_seconds": 10.125,
+          "validation_seconds": 0.016,
+          "total_seconds": 10.141,
+          "done_reason": "stop",
+          "output_truncated": false,
+          "manual_review": {
+            "status": "not_reviewed",
+            "reader_language": null,
+            "meaning_preserved": null,
+            "no_invented_facts": null,
+            "notes": null
+          },
+          "issue_codes": [
+            "source_copy",
+            "wrong_language"
+          ],
+          "validation_status": "rejected",
+          "request_options": {
+            "temperature": 0.7,
+            "num_ctx": 8192,
+            "num_predict": 3000
+          },
+          "request_sha256": "5a86e776e2ed8f94f2e82406349bbf447143a1c136340a9de52df3a44c142981"
+        },
+        {
+          "source_id": "riverside",
+          "source_locale": "vi",
+          "target_locale": "fr",
+          "source_chars": 413,
+          "mode": "schema_only",
+          "seed": 42,
+          "queue_wait_seconds": 0,
+          "inference_timeout_seconds": 30,
+          "generation_seconds": 9.859,
+          "validation_seconds": 0.0,
+          "total_seconds": 9.859,
+          "done_reason": "stop",
+          "output_truncated": false,
+          "manual_review": {
+            "status": "not_reviewed",
+            "reader_language": null,
+            "meaning_preserved": null,
+            "no_invented_facts": null,
+            "notes": null
+          },
+          "issue_codes": [
+            "source_copy",
+            "wrong_language"
+          ],
+          "validation_status": "rejected",
+          "request_options": {
+            "temperature": 0,
+            "num_ctx": 8192,
+            "num_predict": 3000
+          },
+          "request_sha256": "08abc9d634571c9b52bb787b3f0d69c9bb26e79246b047e6b2cdf2f003a125ac"
+        },
+        {
+          "source_id": "riverside",
+          "source_locale": "vi",
+          "target_locale": "fr",
+          "source_chars": 413,
+          "mode": "unconstrained",
+          "seed": 42,
+          "queue_wait_seconds": 0,
+          "inference_timeout_seconds": 30,
+          "generation_seconds": null,
+          "validation_seconds": null,
+          "total_seconds": 30.016,
+          "done_reason": null,
+          "output_truncated": false,
+          "manual_review": {
+            "status": "not_reviewed",
+            "reader_language": null,
+            "meaning_preserved": null,
+            "no_invented_facts": null,
+            "notes": null
+          },
+          "issue_codes": [
+            "model_timeout"
+          ],
+          "validation_status": "error"
+        }
+      ]
+    },
+    "translation-benchmark-final-pilot.json": {
+      "commit": "1810c03fceae045cba9d70ed00c571393677c1a7",
+      "working_tree_dirty": true,
+      "timestamp": "2026-10-24T11:34:42.805959+00:00",
+      "stage": "pilot",
+      "status": "finished",
+      "model": "qwen3:4b",
+      "model_digest": "359d7dd4bcdab3d86b87d73ac27966f4dbb9f5efdfcc75d34a8764a09474fae7",
+      "ollama_version": "0.40.8",
+      "prompt_version": "faithful-translation-v2.1",
+      "validator_version": "translation-v2.1",
+      "detector_version": "py3langid-0.4.0-bundled-139",
+      "corpus_sha256": "1b6c9f28cfbd3cb9443aa4e9dbb4ae826f624144527313273e1a94fd1ca1f6f7",
+      "full_benchmark_allowed": false,
+      "automatically_passed_locales": [],
+      "human_reviewed_locales": [],
+      "rows": [
+        {
+          "source_id": "riverside",
+          "source_locale": "vi",
+          "target_locale": "fr",
+          "source_chars": 413,
+          "mode": "worker",
+          "seed": 42,
+          "queue_wait_seconds": 0,
+          "inference_timeout_seconds": 45,
+          "generation_seconds": 24.172,
+          "validation_seconds": 1.125,
+          "total_seconds": 25.297,
+          "done_reason": "stop",
+          "output_truncated": false,
+          "manual_review": {
+            "status": "not_reviewed",
+            "reader_language": null,
+            "meaning_preserved": null,
+            "no_invented_facts": null,
+            "notes": null
+          },
+          "issue_codes": [
+            "source_copy",
+            "wrong_language"
+          ],
+          "validation_status": "rejected",
+          "request_options": {
+            "temperature": 0.7,
+            "top_p": 0.8,
+            "top_k": 20,
+            "min_p": 0,
+            "num_ctx": 8192,
+            "num_predict": 1600,
+            "seed": 42
+          },
+          "request_sha256": "3013d13568d01a94ef28c7089a13a7d4854d677f470b906d218c74fc40666270"
+        },
+        {
+          "source_id": "riverside",
+          "source_locale": "vi",
+          "target_locale": "fr",
+          "source_chars": 413,
+          "mode": "direct",
+          "seed": 42,
+          "queue_wait_seconds": 0,
+          "inference_timeout_seconds": 45,
+          "generation_seconds": 13.484,
+          "validation_seconds": 0.016,
+          "total_seconds": 13.5,
+          "done_reason": "stop",
+          "output_truncated": false,
+          "manual_review": {
+            "status": "not_reviewed",
+            "reader_language": null,
+            "meaning_preserved": null,
+            "no_invented_facts": null,
+            "notes": null
+          },
+          "issue_codes": [
+            "source_copy",
+            "wrong_language"
+          ],
+          "validation_status": "rejected",
+          "request_options": {
+            "temperature": 0.7,
+            "top_p": 0.8,
+            "top_k": 20,
+            "min_p": 0,
+            "num_ctx": 8192,
+            "num_predict": 1600,
+            "seed": 42
+          },
+          "request_sha256": "3013d13568d01a94ef28c7089a13a7d4854d677f470b906d218c74fc40666270"
+        },
+        {
+          "source_id": "riverside",
+          "source_locale": "vi",
+          "target_locale": "ar",
+          "source_chars": 413,
+          "mode": "worker",
+          "seed": 42,
+          "queue_wait_seconds": 0,
+          "inference_timeout_seconds": 45,
+          "generation_seconds": 14.203,
+          "validation_seconds": 0.015,
+          "total_seconds": 14.218,
+          "done_reason": "stop",
+          "output_truncated": false,
+          "manual_review": {
+            "status": "not_reviewed",
+            "reader_language": null,
+            "meaning_preserved": null,
+            "no_invented_facts": null,
+            "notes": null
+          },
+          "issue_codes": [
+            "source_copy",
+            "wrong_script",
+            "wrong_language"
+          ],
+          "validation_status": "rejected",
+          "request_options": {
+            "temperature": 0.7,
+            "top_p": 0.8,
+            "top_k": 20,
+            "min_p": 0,
+            "num_ctx": 8192,
+            "num_predict": 1600,
+            "seed": 42
+          },
+          "request_sha256": "4c16bb35145ff8a73afe37553460f20159374d94088a9cb154da478dff1b2fb1"
+        },
+        {
+          "source_id": "riverside",
+          "source_locale": "vi",
+          "target_locale": "ar",
+          "source_chars": 413,
+          "mode": "direct",
+          "seed": 42,
+          "queue_wait_seconds": 0,
+          "inference_timeout_seconds": 45,
+          "generation_seconds": 10.579,
+          "validation_seconds": 0.0,
+          "total_seconds": 10.579,
+          "done_reason": "stop",
+          "output_truncated": false,
+          "manual_review": {
+            "status": "not_reviewed",
+            "reader_language": null,
+            "meaning_preserved": null,
+            "no_invented_facts": null,
+            "notes": null
+          },
+          "issue_codes": [
+            "source_copy",
+            "wrong_script",
+            "wrong_language"
+          ],
+          "validation_status": "rejected",
+          "request_options": {
+            "temperature": 0.7,
+            "top_p": 0.8,
+            "top_k": 20,
+            "min_p": 0,
+            "num_ctx": 8192,
+            "num_predict": 1600,
+            "seed": 42
+          },
+          "request_sha256": "4c16bb35145ff8a73afe37553460f20159374d94088a9cb154da478dff1b2fb1"
+        }
+      ]
+    }
+  },
+  "model_installation": {
+    "details": {
+      "parent_model": "",
+      "format": "gguf",
+      "family": "qwen3",
+      "families": [
+        "qwen3"
+      ],
+      "parameter_size": "4.0B",
+      "quantization_level": "Q4_K_M"
+    },
+    "parameters": "temperature                    0.6\ntop_k                          20\ntop_p                          0.95\nrepeat_penalty                 1\nstop                           \"<|im_start|>\"\nstop                           \"<|im_end|>\"",
+    "system_length": 0,
+    "template_sha256": "2d54db2b9bb29ce7db54fea63a891f5859603813c555b1f88b5e0994652897f9",
+    "template_length": 1506
+  },
+  "hardware": {
+    "cpu": "AMD Ryzen 7 6800H",
+    "cores": 8,
+    "logical_processors": 16,
+    "system_visible_memory_bytes": 14702026752,
+    "inference_device": "CPU"
+  },
+  "calibration": {
+    "validator_version": "translation-v2.1",
+    "thresholds": {
+      "min_letters": 24,
+      "min_cjk_letters": 10,
+      "language_confidence": 0.85,
+      "confidence_margin": 0.2,
+      "near_copy_ratio": 0.9,
+      "copied_source_coverage": 0.65,
+      "copied_output_coverage": 0.6,
+      "min_copy_block": 50,
+      "script_ratio": 0.45,
+      "mixed_language_ratio": 0.2,
+      "max_text_chars": 30000
+    },
+    "dataset": "synthetic-narrations-v1",
+    "dataset_purpose": "development calibration, not an independent population estimate",
+    "false_accepts": 0,
+    "false_rejections": 0,
+    "valid_uncertain": 2,
+    "counts": {
+      "invalid:rejected": 28,
+      "valid:passed": 16,
+      "valid:uncertain": 2
+    }
+  },
+  "audit": {
+    "validator_version": "translation-v2.1",
+    "read_only": true,
+    "mutation_performed": false,
+    "counts": {
+      "creation_job:passed": 19,
+      "creation_job:uncertain": 5,
+      "job:rejected": 21,
+      "release:passed": 46,
+      "release:uncertain": 16,
+      "saved_translation:passed": 14,
+      "saved_translation:uncertain": 5
+    },
+    "failed_jobs_without_output": 26,
+    "needs_admin_review": 61,
+    "supplement_results_matching_saved_translation": 0,
+    "supplement_results_matching_current_release": 0,
+    "current_release_validation_counts": {
+      "passed": 14,
+      "rejected": 0,
+      "uncertain": 5
+    },
+    "regeneration_ready": false
+  },
+  "verification": {
+    "ruff": "passed using services/backend/pyproject.toml",
+    "pytest_sqlite": {
+      "passed": 197,
+      "skipped": 6
+    },
+    "pytest_postgresql": {
+      "version": "18.6",
+      "passed": 203
+    },
+    "typecheck": "passed admin, web, edge",
+    "build_site": "passed",
+    "playwright": {
+      "passed": 40,
+      "projects": [
+        "desktop",
+        "mobile"
+      ],
+      "specs": [
+        "admin.spec.ts",
+        "narration-location.spec.ts",
+        "translation-reliability.spec.ts"
+      ],
+      "final_translation_spec_rerun_passed": 4
+    },
+    "diff_check": "passed"
+  },
+  "limitations": [
+    "Development calibration is not an independent population estimate",
+    "Correct language does not prove semantic accuracy",
+    "Historical source provenance is uncertain for unlinked saved text",
+    "No PostgreSQL 17 runner, production deployment/load test, human multilingual review or full model evaluation in this session",
+    "Observed CPU timings are not a controlled-load performance comparison"
+  ],
+  "implementation_sha256": {
+    "services/backend/app/translation_validation.py": "2627143b5a8913ed6776e632bf302fa45e5ff84edc0cf7bf8653923af516b3de",
+    "services/backend/app/ai_policy.py": "a3ca62fb8aaf8908144f60a43de5c4dbddf5a8e3997b73c6298ac3ecfe508b2d",
+    "services/backend/app/ai_jobs.py": "236886d518d45d6d621f9a7feaeffc7ba8dc6af153b8a98e801afac070d8893f",
+    "services/backend/app/narration_generation.py": "41c1d64f99c555c1d226b72be3395043c37c988f58391bef8d5b28217d3d12bd",
+    "services/backend/app/narration_jobs.py": "2e81481f99f7a4fe33126dfdf68a8630e93a76eb8c90989aa24f5bf7fba2cc2f",
+    "services/backend/app/wikipedia.py": "428a5a0605f995aa033f75b356e925ec17a56856f978c869847449774f0b3edb",
+    "services/backend/pyproject.toml": "3d18673e3e898a381deb54429f47f984645814cea676306242662b543917934c",
+    "services/backend/uv.lock": "67206c6b3095a312e3e56e29cb8aa636d3d3485d9117c4c7a7d77f58a9abeb36",
+    "scripts/ollama_worker.py": "df740fc6466990a7a366ad354ee32c29d42aea2b5e8782fd87e34c27240b1a81",
+    "scripts/benchmark_translations.py": "69a5640a00b75d7ca93cf834653de74086355297d5c00531173a6860e1932c95",
+    "scripts/audit_ai_translations.py": "820048434afb15a8cf2a84ce534333fb7a013d2f34f8be362044faddbe6b6e86",
+    "scripts/calibrate_translation_validator.py": "dd6f1ef8c71823d28593a6e3735d7943724572f9d5db509fe662b663dac1699d",
+    "apps/admin/src/NarrationTranslations.tsx": "ae2bf099e8690556cd58b504fa0fd822cd735943d31671e4dac5107a07f7a3cc",
+    "apps/admin/src/WikipediaImport.tsx": "e2bcf626aab66416a25cfff0bde2e861e17736876ac8e04614bc8bcaf1dea3b4",
+    "packages/api-client/src/index.ts": "d5ff9fbe6e1f9ee7acbae07a53af753957ff30f9af7435803c6fde4b0fc152cf",
+    "packages/contracts/src/index.ts": "e3affe521a26c0d7a0ca06829ac2af936ef4ced6fe695a91f1433747fd21cf0b",
+    "tests/fixtures/translation-corpus.json": "1b6c9f28cfbd3cb9443aa4e9dbb4ae826f624144527313273e1a94fd1ca1f6f7"
+  }
+}

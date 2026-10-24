@@ -26,17 +26,17 @@ Không cache API hoặc đưa secret vào VITE_*. Các domain/service thật gi�
 
 Release workflow là migration owner duy nhất: advisory lock PG, backup inventory và revision trước/sau.
 Docker CMD và native start command không migrate. Không dùng đồng thời startup migration, Render predeploy và release job.
-Không create_all lúc startup, không downgrade/restore tự động. Revision ứng dụng hiện tại 0009; readiness kiểm tra revision.
+Không create_all lúc startup, không downgrade/restore tự động. Revision ứng dụng hiện tại 0010; readiness kiểm tra revision.
 Rollback ứng dụng chỉ khi binary trước tương thích schema đang có; dữ liệu không tự hạ theo binary.
 
 GPS, TTS, bản dịch AI và phục hồi tên danh mục: [NARRATION-GPS.md](NARRATION-GPS.md).
-Worker PC hiện dùng protocol 2; protocol 1 chỉ nhận Wikipedia, không nhận supplement.
+Code worker mới dùng protocol 3; worker cũ không nhận job validation contract mới. [Kiểm chứng và hướng dẫn chuyển phiên bản AI](AI-TRANSLATION-RELIABILITY.md).
 Không tự cập nhật PC từ cloud; người phụ trách cập nhật/restart worker tương thích.
 Lưu nháp giữ snapshot công khai cũ; muốn gỡ công khai dùng Ẩn. AI lưu nháp sau duyệt, công bố chủ động.
 Binary backend 0008 có readiness revision cứng: phải diễn tập bản tương thích trước rollback trên schema 0009.
 
 - `/api/v1/health/live`: process hoạt động.
-- `/api/v1/health/ready`: DB truy cập được users và Alembic revision đúng 0008; không phụ thuộc Ollama/Internet.
+- `/api/v1/health/ready`: DB truy cập được users và Alembic revision đúng 0010; không phụ thuộc Ollama/Internet.
 - `/api/v1/version`: release SHA và worker protocol. Render dùng RENDER_GIT_COMMIT; không đặt RELEASE_SHA cố định gây che bản mới.
 - `/release.json`: identity frontend đã build; Worker trả no-store.
 - `X-Request-ID`: đối chiếu request; không log cookie/password/worker token/DSN/request body.
@@ -60,10 +60,10 @@ Giới hạn/cache/rate-limit trong bộ nhớ process chưa thay thành dịch 
 
 ## Ollama worker trên PC
 
-Protocol hiện tại **1**: heartbeat/claim/complete qua `/api/v1/worker`, Bearer token riêng; request timeout30s,
+Protocol của code hiện tại **3** (chưa triển khai bản vá dịch): heartbeat/claim/complete qua `/api/v1/worker`, Bearer token riêng; request timeout30s,
 heartbeat20s, lease15phút, tối đa3 claim, queue hết hạn24giờ; completion cùng lease có thể retry3lần.
-Release API và manifest ghi worker_protocol=1. Client scripts/ollama_worker.py hiện tương thích v1;
-server vẫn chấp nhận client v1 cũ, chưa có cơ chế thương lượng version qua header.
+Release API và manifest ghi worker_protocol=3. Client scripts/ollama_worker.py gửi protocol trong heartbeat/claim;
+server vẫn nhận client cũ cho job legacy tương thích nhưng không giao validation contract mới cho protocol 1/2.
 Trước thay contract phải giữ tương thích hoặc triển khai quy trình nâng worker thủ công với owner PC.
 Cloud pipeline không SSH/cập nhật PC, không mở public port11434 và không cấp credential DB cho PC.
 

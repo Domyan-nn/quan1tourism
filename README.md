@@ -2,6 +2,8 @@
 
 Danh mục song ngữ Việt/Anh và migration `0010`: [mapping, kiểm thử và hướng dẫn chuyển đổi](docs/BILINGUAL-CATEGORIES.md).
 
+Sửa độ tin cậy luồng dịch AI: [nguyên nhân, kiểm thử, audit và hướng dẫn vận hành](docs/AI-TRANSLATION-RELIABILITY.md). Bản vá đã được kiểm thử local; `qwen3:4b` chưa vượt pilot dịch, batch mặc định một ngôn ngữ.
+
 Trang quản trị nội dung thuyết minh du lịch bằng **React + TypeScript**, kết nối **FastAPI + SQLAlchemy + Alembic**. Tiếng Việt mặc định, có giao diện tiếng Anh và cỡ chữ lớn. Có bản đồ du khách và thống kê lượt xem/lượt nghe. GPS foreground, bán kính theo địa điểm, UI VI/EN độc lập với ngôn ngữ bài và bổ sung bản dịch qua Ollama queue: [hướng dẫn](docs/NARRATION-GPS.md), [kiểm thử](docs/NARRATION-VERIFICATION.md). Các thay đổi mới chưa triển khai cloud.
 
 ## Chạy local
@@ -63,9 +65,9 @@ services/backend/.venv/Scripts/python.exe scripts/setup_postgresql.py --database
 
 Script tạo database nếu chưa có, chạy toàn bộ migration, sao lưu SQLite rồi chuyển các tài khoản, phiên, danh mục, POI, bản dịch, media, release và lịch sử trong một transaction. Không ghi đè dữ liệu PostgreSQL đã có. PostGIS là tùy chọn; không cần cài extension để dùng quản trị nội dung. Khởi động lại backend sau khi đổi database.
 
-Để dùng AI, mở Ollama với model `qwen3:4b` đã cài (`ollama pull qwen3:4b` nếu chưa có). Trong **Thêm địa điểm → Tạo địa điểm từ Wikipedia**, dán URL rồi nhấn **Tạo thông tin bằng AI**. Các ngôn ngữ bắt buộc được chọn sẵn; có thể chọn thêm ngôn ngữ. Kết quả điền vào biểu mẫu để kiểm tra, sau đó nhấn **Lưu nháp**. Luồng duyệt/xuất bản vẫn áp dụng.
+Để thử AI, mở Ollama với model đã cài. Trong **Thêm địa điểm → Tạo địa điểm từ Wikipedia**, mặc định chỉ tạo bản VI để kiểm tra và lưu; sau đó chọn từng locale để dịch từ bài VI đã xác minh. Kết quả đủ điều kiện vẫn cần kiểm tra trước khi **Lưu nháp**. Luồng duyệt/xuất bản tiếp tục áp dụng. Model `qwen3:4b` trên máy kiểm chứng hiện vẫn chép nguồn khi dịch, nên chưa mở batch nhiều ngôn ngữ; xem báo cáo nêu trên.
 
-Tên lấy từ Wikipedia; AI chọn danh mục và soạn thuyết minh; tọa độ lấy từ Wikipedia/Wikidata; ảnh và giấy phép lấy từ Wikimedia Commons. Thông tin thiếu được để trống, không dùng tọa độ giả. Nguồn, revision, model, cảnh báo và ghi công ảnh được lưu cùng POI và giữ trong snapshot đã xuất bản. Wikipedia cần Internet; bước AI chạy local, thường khoảng một phút cho Việt/Anh trên CPU của máy đã kiểm tra.
+Tên lấy từ Wikipedia; AI chọn danh mục và soạn thuyết minh; tọa độ lấy từ Wikipedia/Wikidata; ảnh và giấy phép lấy từ Wikimedia Commons. Thông tin thiếu được để trống, không dùng tọa độ giả. Nguồn, revision, model, cảnh báo và ghi công ảnh được lưu cùng POI và giữ trong snapshot đã xuất bản. Wikipedia cần Internet; bước AI chạy local. Thời gian chờ và xử lý được hiển thị riêng, không cam kết một thời lượng cố định trên CPU.
 
 ## Tài khoản demo local
 

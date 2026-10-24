@@ -75,4 +75,15 @@ def test_generation_timeout_returns_sanitized_error_with_lease(monkeypatch):
         raise TimeoutError("sensitive model/input")
     monkeypatch.setattr(worker, "generate_draft", fail)
     assert worker.process_job({"lease": "lease", "payload": {"article": {"url": "https://vi.wikipedia.org/wiki/Test"},
-                              "categories": [], "languages": []}}) == {"lease": "lease", "error": "generation_failed"}
+                              "categories": [], "languages": []}}) == {
+                                  "lease": "lease", "error": "model_timeout", "issue_codes": ["model_timeout"]}
+
+
+def test_worker_connection_error_is_distinct_from_inference_timeout(monkeypatch):
+    def fail(*args, **kwargs):
+        raise OSError("sensitive local endpoint")
+    monkeypatch.setattr(worker, "generate_draft", fail)
+    result = worker.process_job({'lease': 'lease', 'payload': {
+        'article': {'url': 'https://vi.wikipedia.org/wiki/Test'}, 'categories': [], 'languages': []}})
+    assert result['error'] == 'worker_unavailable'
+    assert 'sensitive' not in json.dumps(result)

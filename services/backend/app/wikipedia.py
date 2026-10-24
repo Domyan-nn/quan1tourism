@@ -5,6 +5,7 @@ import math
 import os
 import re
 import socket
+import time
 from datetime import datetime, timezone
 from html.parser import HTMLParser
 from threading import BoundedSemaphore
@@ -336,10 +337,12 @@ Không kể lịch sử khu đất, không tự thêm mốc năm, giờ mở c�
 Không thêm tọa độ hay ảnh vào câu trả lời. Thông tin thiếu phải cảnh báo, không bịa.
 Tóm lược bằng lời của bạn, không sao chép đoạn văn dài. Đây là bản nháp cho người biên tập duyệt.
 """
+        from .ai_policy import translation_policy
+        generation_started = time.monotonic()
         result = fetch_json(
             OLLAMA_BASE_URL + "/api/chat",
             local=True,
-            timeout=600,
+            timeout=translation_policy()["generation_timeout_seconds"],
             payload={
                 "model": OLLAMA_MODEL,
                 "stream": False,
@@ -366,9 +369,10 @@ Tóm lược bằng lời của bạn, không sao chép đoạn văn dài. Đây
                 ],
             },
         )
+        generation_seconds = round(time.monotonic() - generation_started, 3)
+        if not result.get("done") or result.get("done_reason") != "stop":
+            raise HTTPException(502, "incomplete_generation")
         try:
-            if not result.get("done") or result.get("done_reason") != "stop":
-                raise ValueError()
             generated = GeneratedPlace.model_validate_json(result["message"]["content"])
             if generated.category_id not in {item["id"] for item in categories}:
                 raise ValueError()
@@ -377,9 +381,14 @@ Tóm lược bằng lời của bạn, không sao chép đoạn văn dài. Đây
             if any(not tr.title.strip() or not tr.text.strip() for tr in generated.translations.values()):
                 raise ValueError()
         except (KeyError, TypeError, ValueError, ValidationError):
-            raise HTTPException(
-                502, "AI chưa tạo được nội dung đầy đủ. Thử lại hoặc chọn ít ngôn ngữ hơn."
-            ) from None
+            raise HTTPException(502, "invalid_output") from None
+        from .translation_validation import validate_draft_translations
+        validation_started = time.monotonic()
+        validations = validate_draft_translations(article, generated.translations)
+        validation_seconds = round(time.monotonic() - validation_started, 3)
+        issues = list(dict.fromkeys(c for report in validations.values() for c in report.issues))
+        if issues:
+            raise HTTPException(422, issues[0])
         warnings = (
             source.pop("warnings")
             + administrative_warnings(article["text"])
@@ -417,6 +426,9 @@ Tóm lược bằng lời của bạn, không sao chép đoạn văn dài. Đây
             "draft": draft.model_dump(),
             "missing_fields": missing,
             "elapsed_seconds": round(result.get("total_duration", 0) / 1e9, 1),
+            "validation": {code: report.to_dict() for code, report in validations.items()},
+            "done_reason": "stop", "prompt_version": "wikipedia-v2-validated",
+            "timings": {"generation_seconds": generation_seconds, "validation_seconds": validation_seconds},
         }
     finally:
         generation_slot.release()

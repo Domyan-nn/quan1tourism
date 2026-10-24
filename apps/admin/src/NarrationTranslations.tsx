@@ -1,5 +1,10 @@
 import { useEffect, useState } from "react";
-import { uiMessage, api, SpeechPlayer } from "@quan1/api-client";
+import {
+  uiMessage,
+  api,
+  SpeechPlayer,
+  aiIssueMessage,
+} from "@quan1/api-client";
 import type { Language, Poi, Translation } from "@quan1/contracts";
 
 type Job = {
@@ -8,6 +13,13 @@ type Job = {
   status: "queued" | "running" | "completed" | "failed";
   error: string;
   source_changed?: boolean;
+  issue_codes?: string[];
+  reviewable?: boolean;
+  validation?: { status: string; issues: string[] } | null;
+  timings?: {
+    queue_wait_seconds?: number | null;
+    generation_seconds?: number | null;
+  };
   result: null | {
     translation: Pick<Translation, "title" | "text">;
     model: string;
@@ -33,15 +45,13 @@ export function NarrationTranslations({
   onPreview: (locale: string) => void;
 }) {
   const targets = languages.filter((l) => l.enabled && l.code !== "vi");
-  const [selection, setSelection] = useState<string[]>(() =>
-    targets
-      .filter(
-        (l) =>
-          !poi.translations[l.code]?.text.trim() &&
-          !poi.translations[l.code]?.title.trim(),
-      )
-      .map((l) => l.code),
-  );
+  const [selection, setSelection] = useState<string[]>([]);
+  const [policy, setPolicy] = useState({
+    enabled: true,
+    batch_limit: 1,
+    verified_locales: [] as string[],
+  });
+  const [workerReady, setWorkerReady] = useState(true);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -56,10 +66,16 @@ export function NarrationTranslations({
     let alive = true;
     async function refresh() {
       try {
-        const result = await api<{ items: Job[] }>(
-          `/admin/pois/${poi.id}/narration-jobs`,
-        );
-        if (alive) setJobs(result.items);
+        const result = await api<{
+          items: Job[];
+          policy?: typeof policy;
+          worker_ready?: boolean;
+        }>(`/admin/pois/${poi.id}/narration-jobs`);
+        if (alive) {
+          setJobs(result.items);
+          if (result.policy) setPolicy(result.policy);
+          setWorkerReady(result.worker_ready !== false);
+        }
       } catch (e) {
         if (alive) setError((e as Error).message);
       }
@@ -142,13 +158,13 @@ export function NarrationTranslations({
     ? {
         queued: "Đang chờ máy AI",
         running: "Đang tạo",
-        completed: "Chờ duyệt",
+        completed: "Đã tạo — chờ kiểm tra",
         failed: "Thất bại",
       }
     : {
         queued: "Waiting for AI worker",
         running: "Generating",
-        completed: "Needs review",
+        completed: "Generated — needs review",
         failed: "Failed",
       };
   return (
@@ -172,6 +188,18 @@ export function NarrationTranslations({
           ? "Tôi đã xác minh và lưu nội dung nguồn tiếng Việt."
           : "I have verified and saved the Vietnamese source narration."}
       </label>
+      <p role="status">
+        {vi
+          ? `Tối đa ${policy.batch_limit} ngôn ngữ mỗi lượt. Ngôn ngữ chưa kiểm chứng chỉ thử riêng lẻ.`
+          : `Up to ${policy.batch_limit} languages per request. Unverified languages are available for individual trials.`}
+      </p>
+      {!policy.enabled && <p role="status">{vi ? "Tạo bản dịch AI đang tạm khóa. Bạn vẫn có thể nhập và sửa nội dung thủ công."
+        : "AI translation is paused. Manual content editing remains available."}</p>}
+      {!workerReady && (
+        <p role="status">
+          {aiIssueMessage("worker_unavailable", vi ? "vi" : "en")}
+        </p>
+      )}
       {disabled && (
         <p role="status">
           {vi
@@ -180,12 +208,20 @@ export function NarrationTranslations({
         </p>
       )}
       <p role="status">
-        {vi ? "Đã xử lý" : "Processed"}:{" "}
+        {vi ? "Đạt kiểm tra tự động" : "Passed automated checks"}:{" "}
+        {latest.filter((j) => j.reviewable).length}
+        {" · "}
+        {vi ? "Lỗi/cần kiểm tra" : "Failed/uncertain"}:{" "}
         {
-          latest.filter((j) => ["completed", "failed"].includes(j.status))
-            .length
+          latest.filter(
+            (j) =>
+              j.status === "failed" ||
+              (j.status === "completed" && !j.reviewable),
+          ).length
         }
-        /{latest.length}
+        {" · "}
+        {vi ? "Đang chờ/xử lý" : "Waiting/running"}:{" "}
+        {latest.filter((j) => ["queued", "running"].includes(j.status)).length}
       </p>
       <table>
         <thead>
@@ -220,7 +256,11 @@ export function NarrationTranslations({
                 </td>
                 <td>
                   {job && !job.result?.applied_at
-                    ? labels[job.status]
+                    ? job.status === "completed" && !job.reviewable
+                      ? vi
+                        ? "Kết quả cần kiểm tra lại"
+                        : "Result needs revalidation"
+                      : labels[job.status]
                     : translation?.published
                       ? vi
                         ? "Đã công bố"
@@ -243,13 +283,33 @@ export function NarrationTranslations({
                   {poi.narration_meta?.[code]?.model && (
                     <small>{poi.narration_meta[code].model}</small>
                   )}
-                  {job?.status === "failed" && (
-                    <p>
-                      {vi
-                        ? "Tạo bản dịch thất bại. Thử lại riêng ngôn ngữ này hoặc chỉnh tay."
-                        : "Translation failed. Retry this language or edit manually."}
-                    </p>
+                  {job?.timings && (
+                    <small>
+                      {vi ? "Chờ" : "Queue"}:{" "}
+                      {Math.round(job.timings.queue_wait_seconds ?? 0)}s
+                      {job.timings.generation_seconds != null &&
+                        ` · ${vi ? "Xử lý" : "Generation"}: ${Math.round(job.timings.generation_seconds)}s`}
+                    </small>
                   )}
+                  {job &&
+                    (job.status === "failed" ||
+                      (job.status === "completed" && !job.reviewable)) && (
+                      <p>
+                        {(job.issue_codes?.length
+                          ? job.issue_codes
+                          : [job.error || "language_uncertain"]
+                        )
+                          .map(
+                            (code) =>
+                              aiIssueMessage(code, vi ? "vi" : "en") ||
+                              aiIssueMessage(
+                                "generation_failed",
+                                vi ? "vi" : "en",
+                              ),
+                          )
+                          .join(" ")}
+                      </p>
+                    )}
                 </td>
                 <td>
                   <button
@@ -271,7 +331,7 @@ export function NarrationTranslations({
                     type="button"
                     className="button secondary"
                     disabled={
-                      disabled ||
+                      !policy.enabled || disabled ||
                       busy ||
                       !verified ||
                       job?.status === "queued" ||
@@ -287,7 +347,7 @@ export function NarrationTranslations({
                         ? "AI bổ sung / thử lại"
                         : "AI generate / retry"}
                   </button>
-                  {job?.result && !job.result.applied_at && (
+                  {job?.result && job.reviewable && !job.result.applied_at && (
                     <button
                       type="button"
                       className="button secondary"
@@ -308,7 +368,15 @@ export function NarrationTranslations({
       <button
         type="button"
         className="button"
-        disabled={disabled || busy || !verified || !selection.length}
+        disabled={
+          !policy.enabled || disabled ||
+          busy ||
+          !verified ||
+          !selection.length ||
+          selection.length > policy.batch_limit ||
+          (selection.length > 1 &&
+            selection.some((c) => !policy.verified_locales.includes(c)))
+        }
         onClick={() => generate(selection)}
       >
         {vi ? "AI tạo các ngôn ngữ đã chọn" : "Generate selected languages"}
@@ -324,7 +392,8 @@ export function NarrationTranslations({
                   !poi.translations[l.code]?.text.trim() &&
                   !poi.translations[l.code]?.title.trim(),
               )
-              .map((l) => l.code),
+              .map((l) => l.code)
+              .slice(0, policy.batch_limit),
           )
         }
       >

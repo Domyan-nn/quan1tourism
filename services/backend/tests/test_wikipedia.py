@@ -21,6 +21,8 @@ ARTICLE = (
 
 @pytest.fixture()
 def upstream(monkeypatch):
+    from pathlib import Path
+    corpus = json.loads((Path(__file__).parents[3] / 'tests/fixtures/translation-corpus.json').read_text(encoding='utf-8'))
     state = {
         "coordinates": True,
         "image": True,
@@ -41,7 +43,7 @@ def upstream(monkeypatch):
                 "address_evidence": "Cổng chính được đánh địa chỉ số 4 Phạm Ngọc Thạch.",
                 "category_id": "test-category",
                 "translations": {
-                    code: {"title": TITLE, "text": "Nội dung thuyết minh được tóm lược từ bài viết."}
+                    code: {"title": TITLE, "text": corpus['language_samples'].get(code, corpus['language_samples']['en'])}
                     for code in codes
                 },
                 "warnings": ["Kiểm chứng địa chỉ hành chính trước khi xuất bản."],
@@ -173,11 +175,13 @@ def test_ai_requires_staff_and_does_not_fetch_for_visitors(env, upstream):
     assert not upstream["calls"]
 
 
-def test_generate_review_save_and_publish_keep_sources(env, upstream):
+def test_generate_review_save_and_publish_keep_sources(env, upstream, monkeypatch):
+    monkeypatch.setenv("AI_TRANSLATION_BATCH_LIMIT", "2")
+    monkeypatch.setenv("AI_TRANSLATION_VERIFIED_LOCALES", "en,fr")
     client, factory, _ = env
     login(client, "admin")
     assert client.get("/api/v1/admin/ai/status").json()["ready"]
-    response = client.post("/api/v1/admin/ai/wikipedia", json={"url": URL, "language_codes": ["fr"]})
+    response = client.post("/api/v1/admin/ai/wikipedia", json={"url": URL, "language_codes": ["vi", "en", "fr"]})
     assert response.status_code == 200, response.text
     preview = response.json()
     payload = preview["draft"]
@@ -227,7 +231,9 @@ def test_bad_ai_response_never_creates_a_poi(env, upstream, failure):
     client, factory, _ = env
     login(client, "admin")
     upstream[failure] = True
-    assert client.post("/api/v1/admin/ai/wikipedia", json={"url": URL}).status_code == 502
+    response = client.post("/api/v1/admin/ai/wikipedia", json={"url": URL})
+    assert response.status_code == 502
+    assert response.json()["detail"] == ("incomplete_generation" if failure == "truncated" else "invalid_output")
     with factory() as db:
         assert db.scalar(select(func.count()).select_from(Poi)) == 0
 

@@ -5,15 +5,19 @@ import json
 import os
 import sys
 import threading
+import time
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.parse import urlsplit
 from urllib.request import Request, build_opener
+from fastapi import HTTPException
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "services" / "backend"))
 
 from app import config  # noqa: E402,F401
 from app.wikipedia import NoRedirects, generate_draft, ollama_status  # noqa: E402
+from app.narration_generation import GenerationFailure, PROMPT_VERSION  # noqa: E402
+from app.translation_validation import ERROR_CODES  # noqa: E402
 
 
 def server_url(value):
@@ -37,26 +41,41 @@ def call_server(origin, token, path, payload):
 
 def process_job(job):
     payload = job["payload"]
+    context = {key: payload[key] for key in ("locale", "source_revision", "source_hash") if key in payload}
     try:
         if payload.get("kind") == "supplement":
             from app.narration_generation import generate_translation
 
-            return {"lease": job["lease"], **generate_translation(payload)}
+            return {"lease": job["lease"], **context, **generate_translation(payload)}
         result = generate_draft(payload["article"]["url"], payload["categories"], payload["languages"],
                                 article=payload["article"])
         return {"lease": job["lease"], **result}
+    except GenerationFailure as exc:
+        return {"lease": job["lease"], **context, "error": exc.codes[0], "issue_codes": exc.codes,
+                "validation": exc.validation, "timings": exc.timings,
+                "prompt_version": PROMPT_VERSION, "output_mode": "schema"}
+    except HTTPException as exc:
+        code = exc.detail if isinstance(exc.detail, str) and exc.detail in ERROR_CODES else (
+            "model_timeout" if exc.status_code == 504 else "worker_unavailable" if exc.status_code == 503 else "generation_failed")
+        return {"lease": job["lease"], **context, "error": code, "issue_codes": [code]}
+    except TimeoutError:
+        return {"lease": job["lease"], **context, "error": "model_timeout", "issue_codes": ["model_timeout"]}
+    except OSError:
+        return {"lease": job["lease"], **context, "error": "worker_unavailable", "issue_codes": ["worker_unavailable"]}
     except Exception:
-        return {"lease": job["lease"], "error": "generation_failed"}
+        return {"lease": job["lease"], **context, "error": "generation_failed", "issue_codes": ["generation_failed"]}
 
 
 def run(origin, token, *, once=False):
     stopped = threading.Event()
+    current = {}
 
     def heartbeat():
         while not stopped.is_set():
             try:
                 status = ollama_status()
-                call_server(origin, token, "/heartbeat", {"model": status["model"], "ready": status["ready"], "protocol": 2})
+                call_server(origin, token, "/heartbeat", {"model": status["model"], "ready": status["ready"],
+                                                         "protocol": 3, **current})
             except Exception:
                 pass  # Never print exception URLs, response bodies, or credentials.
             stopped.wait(20)
@@ -70,25 +89,32 @@ def run(origin, token, *, once=False):
                 if not ollama_status()["ready"]:
                     print("Ollama/model is not ready. Retrying...", flush=True)
                 else:
-                    job = call_server(origin, token, "/claim", {"protocol": 2}).get("job")
+                    job = call_server(origin, token, "/claim", {"protocol": 3}).get("job")
                     if job:
-                        print("Generating a place draft...", flush=True)
+                        current.update(job_id=job['id'], lease=job['lease'])
+                        print("Generating one AI task...", flush=True)
+                        started = time.monotonic()
                         result = process_job(job)
+                        result.setdefault("timings", {}).setdefault("generation_seconds", round(time.monotonic() - started, 3))
                         # Lost completion responses are retried with the same lease.
                         for attempt in range(3):
                             try:
-                                call_server(origin, token, f"/jobs/{job['id']}/complete", result)
-                                print("Result returned for administrator review.", flush=True)
+                                outcome = call_server(origin, token, f"/jobs/{job['id']}/complete", result)
+                                print("Result needs administrator review." if outcome.get("status") == "completed"
+                                      else "AI task failed: " + ",".join(c for c in outcome.get("issue_codes", []) if c in ERROR_CODES), flush=True)
                                 break
                             except HTTPError as exc:
                                 if exc.code in {401, 403, 409, 422}:
                                     print(f"Result was rejected (HTTP {exc.code}).", flush=True)
                                     break
                                 if attempt < 2:
-                                    stopped.wait(5)
+                                    stopped.wait(2 ** attempt)
                             except Exception:
                                 if attempt < 2:
-                                    stopped.wait(5)
+                                    stopped.wait(2 ** attempt)
+                        current.clear()
+                        if not once:
+                            continue  # No five-second delay between queued tasks.
             except HTTPError as exc:
                 print(f"Server unavailable (HTTP {exc.code}). Check worker configuration.", flush=True)
             except Exception:

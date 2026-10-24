@@ -6,6 +6,75 @@ export class ApiError extends Error {
     super(message);
   }
 }
+const aiIssues: Record<string, [string, string]> = {
+  source_copy: [
+    "AI chép lại bài nguồn, chưa tạo được bản dịch.",
+    "AI copied the source instead of translating.",
+  ],
+  wrong_language: [
+    "Bản AI không đúng ngôn ngữ đã chọn hoặc bị trộn ngôn ngữ.",
+    "AI output uses the wrong or mixed languages.",
+  ],
+  wrong_script: [
+    "Bản AI dùng sai hệ chữ của ngôn ngữ đã chọn.",
+    "AI output uses the wrong writing system.",
+  ],
+  language_uncertain: [
+    "Chưa đủ tin cậy để xác định ngôn ngữ. Hãy chỉnh tay hoặc kiểm tra lại.",
+    "The language could not be identified confidently. Edit or review it manually.",
+  ],
+  empty_output: [
+    "AI trả nội dung rỗng hoặc thiếu tiêu đề/bài.",
+    "AI returned an empty title or narration.",
+  ],
+  invalid_output: [
+    "Đầu ra AI không đúng định dạng hoặc nguồn quá dài cho cấu hình hiện tại.",
+    "AI output has an invalid format, or the source exceeds the current context limit.",
+  ],
+  incomplete_generation: [
+    "AI chưa tạo xong hoặc nội dung bị cắt.",
+    "AI generation is incomplete or truncated.",
+  ],
+  repetitive_output: [
+    "Bản AI lặp nội dung bất thường.",
+    "AI output contains excessive repetition.",
+  ],
+  damaged_unicode: [
+    "Bản AI chứa ký tự bị hỏng.",
+    "AI output contains damaged characters.",
+  ],
+  model_timeout: [
+    "Model AI xử lý quá thời gian giới hạn.",
+    "The AI model exceeded its inference time limit.",
+  ],
+  worker_unavailable: [
+    "Máy AI chưa kết nối hoặc lượt xử lý đã hết hạn.",
+    "The AI worker is unavailable or its processing lease expired.",
+  ],
+  generation_failed: [
+    "Tạo nội dung AI thất bại; nguyên nhân chưa được phân loại.",
+    "AI generation failed for an unclassified reason.",
+  ],
+  source_changed: [
+    "Nguồn đã thay đổi. Hãy tạo yêu cầu mới; nội dung cũ được giữ nguyên.",
+    "The source changed. Generate a new request; existing content was preserved.",
+  ],
+  target_changed: [
+    "Bản dịch đã được chỉnh sửa sau yêu cầu AI. Nội dung được giữ nguyên.",
+    "The target was edited after the AI request. Existing content was preserved.",
+  ],
+  batch_limited: [
+    "Chọn rõ ngôn ngữ cần dịch và tuân theo giới hạn mỗi lượt.",
+    "Select target languages explicitly and stay within the batch limit.",
+  ],
+  language_not_verified: [
+    "Dịch hàng loạt chưa được mở cho những ngôn ngữ này. Hãy thử từng ngôn ngữ.",
+    "Batch generation is not verified for these languages. Try one language at a time.",
+  ],
+};
+export function aiIssueMessage(code: string, locale: string): string {
+  return aiIssues[code]?.[locale === "en" ? 1 : 0] ?? "";
+}
 // Pending responses and notices may outlive a UI language switch.
 export function uiMessage(
   message: string,
@@ -62,6 +131,8 @@ export async function api<T>(
   return response.json() as Promise<T>;
 }
 function localizedError(status: number, detail: unknown, vi: boolean) {
+  if (typeof detail === "string" && aiIssueMessage(detail, vi ? "vi" : "en"))
+    return aiIssueMessage(detail, vi ? "vi" : "en");
   if (
     typeof detail === "string" &&
     (vi ? /[À-ỹ]/u.test(detail) : !/[À-ỹ]/u.test(detail))

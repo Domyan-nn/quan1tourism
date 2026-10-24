@@ -21,6 +21,8 @@ def load_local_environment():
             if key in {
                 "DATABASE_URL", "MEDIA_ROOT", "COOKIE_SECURE", "OLLAMA_BASE_URL", "OLLAMA_MODEL",
                 "APP_ENV", "AI_MODE", "AI_WORKER_TOKEN", "AI_SERVER_URL", "STATIC_ROOT", "GEOCODING_URL",
+                "AI_TRANSLATION_BATCH_LIMIT", "AI_TRANSLATION_VERIFIED_LOCALES", "AI_TRANSLATION_ENABLED",
+                "AI_TRANSLATION_PENDING_LIMIT", "AI_GENERATION_TIMEOUT_SECONDS",
             }:
                 if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
                     value = value[1:-1]

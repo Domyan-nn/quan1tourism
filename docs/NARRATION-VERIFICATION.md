@@ -1,5 +1,7 @@
 # Bàn giao QA: Unicode, TTS, GPS và đa ngôn ngữ
 
+Đây là báo cáo lịch sử ngày 23/10. Bản vá dịch, protocol 3 và kết quả kiểm chứng mới ngày 24/10 nằm tại [AI-TRANSLATION-RELIABILITY.md](AI-TRANSLATION-RELIABILITY.md).
+
 Ngày đối chiếu: 2026-10-23. Làm việc trên mã hiện tại, không có AGENTS.md trong các thư mục mã nguồn đã tìm. Trước thay đổi working tree sạch, base `2377721d696f782fdd657380a45dec34a7043a5d` trên main. Thay đổi mới chưa commit/push/deploy. Artifact local có release `local`, không phải release production được phép promote.
 
 ## Thay đổi và lý do

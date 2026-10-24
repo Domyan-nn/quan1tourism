@@ -250,7 +250,7 @@ test("Wikipedia AI import fills a draft and persists its source", async ({
   await page.route("**/api/v1/admin/ai/wikipedia", async (route) => {
     expect(route.request().postDataJSON()).toEqual({
       url: sourceUrl,
-      language_codes: ["vi", "en"],
+      language_codes: ["vi"],
     });
     await route.fulfill({
       json: {
@@ -370,6 +370,13 @@ test("cloud AI request resumes after reload and returns a private draft", async 
       json: {
         id: "resume-test",
         status: completed ? "completed" : "queued",
+        reviewable: completed,
+        validation: completed
+          ? {
+              vi: { status: "passed", issues: [] },
+              en: { status: "passed", issues: [] },
+            }
+          : null,
         error: "",
         result: completed
           ? {
