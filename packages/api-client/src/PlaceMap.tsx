@@ -1,14 +1,21 @@
 import { useEffect, useRef, useState } from "react";
 import L from "leaflet";
 import type { Poi } from "@quan1/contracts";
-import { api } from "./index";
+import { api, uiMessage } from "./index";
 import "leaflet/dist/leaflet.css";
 import "./map.css";
 declare const __MAP_TILE_URL__: string;
 
-type Point = { latitude: number | null; longitude: number | null };
+type Point = {
+  latitude: number | null;
+  longitude: number | null;
+  trigger_radius_m?: number;
+  auto_narration_enabled?: boolean;
+};
 const center: L.LatLngTuple = [10.7769, 106.7009];
-const valid = (p: Point): p is { latitude: number; longitude: number } =>
+const valid = (
+  p: Point,
+): p is Point & { latitude: number; longitude: number } =>
   p.latitude !== null &&
   p.longitude !== null &&
   Number.isFinite(p.latitude) &&
@@ -30,6 +37,8 @@ export function PlaceMap({
   onChange,
   disabled = false,
   vi = true,
+  userPosition,
+  recenter = 0,
 }: {
   places?: Poi[];
   onSelect?: (poi: Poi) => void;
@@ -37,10 +46,19 @@ export function PlaceMap({
   onChange?: (point: { latitude: number; longitude: number }) => void;
   disabled?: boolean;
   vi?: boolean;
+  userPosition?: {
+    latitude: number;
+    longitude: number;
+    accuracy: number;
+  } | null;
+  recenter?: number;
 }) {
   const node = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
   const layers = useRef<L.LayerGroup | null>(null);
+  const userLayers = useRef<L.LayerGroup | null>(null);
+  const centered = useRef(0);
+  const fitted = useRef(false);
   const latest = useRef({ onSelect, onChange, disabled });
   latest.current = { onSelect, onChange, disabled };
   const [tileError, setTileError] = useState(false);
@@ -60,6 +78,7 @@ export function PlaceMap({
       .on("tileerror", () => setTileError(true))
       .addTo(instance);
     layers.current = L.layerGroup().addTo(instance);
+    userLayers.current = L.layerGroup().addTo(instance);
     instance.on("click", (event: L.LeafletMouseEvent) => {
       if (!latest.current.disabled)
         latest.current.onChange?.({
@@ -74,6 +93,7 @@ export function PlaceMap({
       instance.remove();
       map.current = null;
       layers.current = null;
+      userLayers.current = null;
     };
   }, []);
   useEffect(() => {
@@ -83,6 +103,11 @@ export function PlaceMap({
     group.clearLayers();
     if (position) {
       if (valid(position)) {
+        L.circle([position.latitude, position.longitude], {
+          radius: position.trigger_radius_m ?? 100,
+          color: position.auto_narration_enabled ? "#147566" : "#777",
+          fillOpacity: 0.1,
+        }).addTo(group);
         const pin = L.marker([position.latitude, position.longitude], {
           icon: icon(),
           draggable: !disabled,
@@ -110,13 +135,54 @@ export function PlaceMap({
           .addTo(group)
           .on("click", () => latest.current.onSelect?.(poi));
       }
-      if (points.length)
+      if (points.length && !fitted.current) {
+        fitted.current = true;
         instance.fitBounds(L.latLngBounds(points), {
           padding: [45, 45],
           maxZoom: 16,
         });
+      }
     }
-  }, [places, position?.latitude, position?.longitude, disabled, vi]);
+  }, [
+    places,
+    position?.latitude,
+    position?.longitude,
+    position?.trigger_radius_m,
+    position?.auto_narration_enabled,
+    disabled,
+    vi,
+  ]);
+  useEffect(() => {
+    userLayers.current?.clearLayers();
+    if (
+      !map.current ||
+      !userLayers.current ||
+      !userPosition ||
+      !valid(userPosition)
+    )
+      return;
+    const point: L.LatLngTuple = [
+      userPosition.latitude,
+      userPosition.longitude,
+    ];
+    L.circle(point, {
+      radius: userPosition.accuracy,
+      color: "#246bc1",
+      fillOpacity: 0.12,
+    }).addTo(userLayers.current);
+    L.circleMarker(point, {
+      radius: 7,
+      color: "white",
+      fillColor: "#246bc1",
+      fillOpacity: 1,
+    })
+      .bindTooltip(vi ? "Vị trí của bạn" : "Your location")
+      .addTo(userLayers.current);
+    if (recenter > centered.current) {
+      centered.current = recenter;
+      map.current.setView(point, Math.max(16, map.current.getZoom()));
+    }
+  }, [userPosition, recenter, vi]);
   return (
     <div className="place-map-wrap">
       <div
@@ -194,6 +260,42 @@ export function LocationEditor({
       <summary>{vi ? "Chỉnh sửa nâng cao" : "Advanced editing"}</summary>
       {open && (
         <div className="location-editor">
+          <label className="field-label">
+            <span>
+              <input
+                type="checkbox"
+                checked={value.auto_narration_enabled ?? false}
+                disabled={disabled}
+                onChange={(event) =>
+                  onChange({
+                    ...value,
+                    auto_narration_enabled: event.target.checked,
+                  })
+                }
+              />
+              {vi
+                ? "Cho phép thuyết minh theo vị trí"
+                : "Enable location narration"}
+            </span>
+          </label>
+          <label className="field-label">
+            {vi ? "Bán kính kích hoạt (m)" : "Trigger radius (m)"}
+            <input
+              className="input"
+              type="number"
+              min={20}
+              max={1000}
+              step={1}
+              disabled={disabled}
+              value={value.trigger_radius_m ?? 100}
+              onChange={(event) =>
+                onChange({
+                  ...value,
+                  trigger_radius_m: Number(event.target.value),
+                })
+              }
+            />
+          </label>
           <p className="field-hint">
             {vi
               ? "Kéo ghim hoặc nhấp bản đồ. Vị trí chỉ được ghi khi lưu thay đổi; địa chỉ không tự đổi."
@@ -233,7 +335,7 @@ export function LocationEditor({
                 ? "Tìm trên bản đồ"
                 : "Search map"}
           </button>
-          {error && <p role="alert">{error}</p>}
+          {error && <p role="alert">{uiMessage(error, vi ? "vi" : "en")}</p>}
           <div className="map-results">
             {results.map((result, index) => (
               <button
@@ -294,7 +396,12 @@ export function LocationEditor({
             className="button secondary"
             disabled={disabled}
             onClick={() =>
-              onChange({ latitude: saved.latitude, longitude: saved.longitude })
+              onChange({
+                latitude: saved.latitude,
+                longitude: saved.longitude,
+                trigger_radius_m: saved.trigger_radius_m ?? 100,
+                auto_narration_enabled: saved.auto_narration_enabled ?? false,
+              })
             }
           >
             {vi ? "Khôi phục vị trí" : "Restore saved location"}

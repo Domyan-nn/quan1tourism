@@ -14,6 +14,7 @@ def iso(value):
 
 def serialize(poi: Poi, db: Session, *, statistics=False):
     translations = {}
+    current_release = db.scalar(select(Release).where(Release.poi_id == poi.id, Release.is_current.is_(True)))
     values = poi.translations
     for language in languages(db):
         locale = language.code
@@ -22,6 +23,9 @@ def serialize(poi: Poi, db: Session, *, statistics=False):
             "title": tr.get("title", ""),
             "text": tr.get("text", ""),
             "tts_ready": bool(tr.get("title", "").strip() and tr.get("text", "").strip()),
+            "published": bool(current_release and all(
+                current_release.snapshot.get("translations", {}).get(locale, {}).get(key, "") == tr.get(key, "")
+                for key in ("title", "text")) and tr.get("text", "").strip()),
         }
     return {
         "id": poi.id,
@@ -32,6 +36,9 @@ def serialize(poi: Poi, db: Session, *, statistics=False):
         "category_id": poi.category_id,
         "latitude": poi.latitude,
         "longitude": poi.longitude,
+        "trigger_radius_m": poi.trigger_radius_m,
+        "auto_narration_enabled": poi.auto_narration_enabled,
+        "narration_meta": poi.narration_meta,
         "source": poi.source,
         "status": poi.status,
         "revision": poi.revision,
@@ -41,10 +48,7 @@ def serialize(poi: Poi, db: Session, *, statistics=False):
         "translations": translations,
         "note": poi.note,
         "is_demo": poi.is_demo,
-        "has_published": db.scalar(
-            select(Release.id).where(Release.poi_id == poi.id, Release.is_current.is_(True))
-        )
-        is not None,
+        "has_published": current_release is not None,
     }
 
 
@@ -85,6 +89,9 @@ def text_snapshot(snapshot):
     result = copy.deepcopy(snapshot)
     result.pop("view_count", None)
     result.pop("listen_count", None)
+    result.pop("narration_meta", None)
+    result.setdefault("trigger_radius_m", 100)
+    result.setdefault("auto_narration_enabled", False)
     result["translations"] = {
         code: {
             "title": tr.get("title", ""),
@@ -142,6 +149,9 @@ def transition(db: Session, poi: Poi, user: User, data):
                 setattr(poi, field, copy.deepcopy(snapshot[field]))
             poi.source = copy.deepcopy(snapshot.get("source"))
             poi.short_description = snapshot.get("short_description", "")
+            poi.trigger_radius_m = snapshot.get("trigger_radius_m", 100)
+            poi.auto_narration_enabled = snapshot.get("auto_narration_enabled", False)
+            poi.narration_meta = copy.deepcopy(snapshot.get("narration_meta", {}))
             reserve_identities(db, poi)
         poi.status = "draft"
     else:

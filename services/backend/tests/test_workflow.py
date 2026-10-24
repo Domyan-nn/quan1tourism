@@ -117,7 +117,7 @@ def test_required_languages_and_text_edits_need_no_audio(env):
     assert action(client, poi, "submit").status_code == 200
 
 
-def test_saving_draft_hides_place_and_preserves_release_history(env):
+def test_saving_draft_preserves_public_snapshot_and_release_history(env):
     client, factory, _ = env
     login(client, "admin")
     poi = publish(client, ready(client))
@@ -127,9 +127,10 @@ def test_saving_draft_hides_place_and_preserves_release_history(env):
     changed = client.put(f"/api/v1/admin/pois/{poi['id']}", json=payload)
     assert changed.status_code == 200
     assert changed.json()["status"] == "draft"
-    assert client.get(f"/api/v1/pois/{poi['id']}").status_code == 404
+    assert client.get(f"/api/v1/pois/{poi['id']}").json() == old_public
     with factory() as db:
-        assert db.scalar(select(Release)).snapshot == old_public
+        from app.content import text_snapshot
+        assert text_snapshot(db.scalar(select(Release)).snapshot) == old_public
 
 
 def test_stale_admin_cannot_overwrite_newer_revision(env):

@@ -1,7 +1,7 @@
 # Rollback ứng dụng và phục hồi dữ liệu
 
 Không tự `alembic downgrade`, không restore đè DB đang chạy. Rollback ứng dụng và khôi phục dữ liệu là hai quy trình riêng.
-Nhiệm vụ này không deploy/rollback cloud hoặc đọc/ghi dữ liệu production.
+Nhiệm vụ này không deploy/rollback cloud hoặc ghi dữ liệu production. Đối chiếu tên danh mục từ xa chỉ dùng SELECT, lượt xác minh cuối trong transaction READ ONLY.
 
 ## Rollback ứng dụng
 
@@ -9,10 +9,11 @@ Nhiệm vụ này không deploy/rollback cloud hoặc đọc/ghi dữ liệu pro
    revision hiện tại, previous backend SHA/Render deploy ID, Worker versions và manifest trong receipt/reconcile artifact.
    Giữ DB, media, thống kê, sessions, lịch sử và AI jobs/leases đang có; không chạy seed.
 2. Kiểm tra tương thích schema với **đúng bản trước**: cột được thêm có default, không có rename/drop hay thay ý nghĩa;
-   binary trước đọc/ghi được schema hiện tại. Test CI kiểm tra projection `0007` trên schema `0008` và dữ liệu giữ nguyên,
+   binary trước đọc/ghi được schema hiện tại. Test CI kiểm tra projection `0007`/`0008` trên schema `0009` và dữ liệu giữ nguyên,
    không thay thế chạy binary production trước trong staging. Dùng staging DB/media riêng phục hồi từ backup được phép,
    chạy app trước và test login/POI/draft/ảnh/text/counters/AI queue; không gửi email/worker job ra production.
    Nếu chưa chứng minh tương thích, chọn hotfix forward hoặc maintenance; không tự hạ schema.
+   Backend 0008 kiểm tra readiness revision cứng, nên không rollback binary đó trực tiếp lên 0009. Chuẩn bị bản tương thích và diễn tập trước; xem [NARRATION-GPS.md](NARRATION-GPS.md).
 3. Backend: trên existing Render service, dùng Dashboard Manual Deploy → Deploy a specific commit của previous SHA
    hoặc rollback existing successful deployment đã ghi. Giữ Auto-Deploy Off, không thay env/domain/disk.
    Nếu binary trước còn migration startup thì owner phải kiểm tra tương thích/head và loại bỏ startup migration theo quy trình

@@ -30,7 +30,7 @@ import {
   Volume2,
   X,
 } from "lucide-react";
-import { api, ApiError } from "@quan1/api-client";
+import { uiMessage, api, ApiError } from "@quan1/api-client";
 import type {
   Category,
   Language,
@@ -118,11 +118,18 @@ export function App() {
   const [previewing, setPreviewing] = useState(false);
   const [toast, setToast] = useState("");
   const [categoryDialog, setCategoryDialog] = useState(false);
+  const [categoryEditing, setCategoryEditing] = useState<Category | null>(null);
   const [categoryName, setCategoryName] = useState("");
   const [categoryError, setCategoryError] = useState("");
   const [categoryBusy, setCategoryBusy] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Category | null>(null);
   const t = messages[locale];
+  useEffect(() => {
+    const toggle = () =>
+      setLocale((current) => (current === "vi" ? "en" : "vi"));
+    window.addEventListener("quan1-ui-language", toggle);
+    return () => window.removeEventListener("quan1-ui-language", toggle);
+  }, []);
   const date = new Intl.DateTimeFormat(locale === "vi" ? "vi-VN" : "en-GB", {
     day: "numeric",
     month: "long",
@@ -259,16 +266,24 @@ export function App() {
     setCategoryBusy(true);
     setCategoryError("");
     try {
-      await api("/admin/categories", {
-        method: "POST",
-        body: JSON.stringify({
-          name: categoryName,
-          color: ["green", "orange", "purple", "blue"][categories.length % 4],
-        }),
-      });
+      await api(
+        categoryEditing
+          ? `/admin/categories/${categoryEditing.id}`
+          : "/admin/categories",
+        {
+          method: categoryEditing ? "PUT" : "POST",
+          body: JSON.stringify({
+            name: categoryName,
+            color:
+              categoryEditing?.color ??
+              ["green", "orange", "purple", "blue"][categories.length % 4],
+          }),
+        },
+      );
       setCategoryDialog(false);
       setCategoryName("");
-      notify(locale === "vi" ? "Đã tạo danh mục." : "Category created.");
+      setCategoryEditing(null);
+      notify(locale === "vi" ? "Đã lưu danh mục." : "Category saved.");
     } catch (e) {
       setCategoryError((e as Error).message);
     } finally {
@@ -327,8 +342,12 @@ export function App() {
       value: summary.translations_ready,
       icon: BookOpen,
       color: "purple",
-      caption:
-        locale === "vi" ? "tiếng Việt & tiếng Anh" : "Vietnamese & English",
+      caption: enabledLanguages
+        .filter((language) => language.required)
+        .map((language) =>
+          locale === "vi" ? language.native_name : language.name,
+        )
+        .join(" · "),
     },
     {
       label: t.waiting,
@@ -343,7 +362,7 @@ export function App() {
   if (checking)
     return (
       <div className="auth-loading">
-        <Brand />
+        <Brand vi={locale === "vi"} />
         <Loading text={t.loading} />
       </div>
     );
@@ -373,7 +392,7 @@ export function App() {
         aria-label="Điều hướng chính"
       >
         <div className="sidebar-brand">
-          <Brand />
+          <Brand vi={locale === "vi"} />
           <button
             className="icon-button mobile-close"
             onClick={() => setMenu(false)}
@@ -529,6 +548,8 @@ export function App() {
                 className="button primary"
                 onClick={() => {
                   setCategoryError("");
+                  setCategoryEditing(null);
+                  setCategoryName("");
                   setCategoryDialog(true);
                 }}
               >
@@ -557,7 +578,7 @@ export function App() {
           )}
           {error && (
             <div className="notice error" role="alert">
-              <span>{error}</span>
+              <span>{uiMessage(error, locale)}</span>
               <button
                 className="button small"
                 onClick={() => setRefresh((x) => x + 1)}
@@ -907,7 +928,12 @@ export function App() {
                         </p>
                         <div className="card-bottom">
                           <span>{categoryFor(p.category_id)?.name}</span>
-                          <span className="language-chips">VI · EN</span>
+                          <span className="language-chips">
+                            {languageCodes
+                              .filter((code) => p.translations[code]?.tts_ready)
+                              .map((code) => code.toUpperCase())
+                              .join(" · ")}
+                          </span>
                         </div>
                         <button
                           className="button secondary small"
@@ -1148,6 +1174,21 @@ export function App() {
                       </button>
                       {user.role === "admin" && (
                         <button
+                          className="text-button"
+                          onClick={() => {
+                            setCategoryEditing(c);
+                            setCategoryName(c.name);
+                            setCategoryError("");
+                            setCategoryDialog(true);
+                          }}
+                        >
+                          {locale === "vi"
+                            ? "Sửa tên danh mục"
+                            : "Edit category name"}
+                        </button>
+                      )}
+                      {user.role === "admin" && (
+                        <button
                           className="icon-button"
                           disabled={c.count > 0}
                           onClick={() => {
@@ -1213,14 +1254,14 @@ export function App() {
       {toast && (
         <div className="toast" role="status">
           <CheckCheck size={19} />
-          <span>{toast}</span>
+          <span>{uiMessage(toast, locale, "success")}</span>
           <button onClick={() => setToast("")} aria-label={t.close}>
             <X size={15} />
           </button>
         </div>
       )}
       {help && (
-        <Dialog title={t.help} onClose={() => setHelp(false)}>
+        <Dialog locale={locale} title={t.help} onClose={() => setHelp(false)}>
           <div className="dialog-content help-content">
             <div className="help-lead">
               <span>
@@ -1258,7 +1299,11 @@ export function App() {
         </Dialog>
       )}
       {settings && (
-        <Dialog title={t.custom} onClose={() => setSettings(false)}>
+        <Dialog
+          locale={locale}
+          title={t.custom}
+          onClose={() => setSettings(false)}
+        >
           <div className="dialog-content">
             <label className="preference">
               <span>
@@ -1289,9 +1334,14 @@ export function App() {
       )}
       {categoryDialog && (
         <Dialog
+          locale={locale}
           title={t.addCategory}
           onClose={() => {
-            if (!categoryBusy) setCategoryDialog(false);
+            if (!categoryBusy) {
+              setCategoryDialog(false);
+              setCategoryEditing(null);
+              setCategoryName("");
+            }
           }}
         >
           <form className="dialog-content" onSubmit={createCategory}>
@@ -1313,14 +1363,18 @@ export function App() {
             </label>
             {categoryError && (
               <div className="notice error" role="alert">
-                {categoryError}
+                {uiMessage(categoryError, locale)}
               </div>
             )}
             <div className="dialog-actions">
               <button
                 type="button"
                 className="button secondary"
-                onClick={() => setCategoryDialog(false)}
+                onClick={() => {
+                  setCategoryDialog(false);
+                  setCategoryEditing(null);
+                  setCategoryName("");
+                }}
                 disabled={categoryBusy}
               >
                 {t.cancel}
@@ -1329,7 +1383,13 @@ export function App() {
                 className="button primary"
                 disabled={categoryBusy || !categoryName.trim()}
               >
-                {categoryBusy ? t.saving : t.create}
+                {categoryBusy
+                  ? t.saving
+                  : categoryEditing
+                    ? locale === "vi"
+                      ? "Lưu danh mục"
+                      : "Save category"
+                    : t.create}
               </button>
             </div>
           </form>
@@ -1337,6 +1397,7 @@ export function App() {
       )}
       {deleteTarget && (
         <Dialog
+          locale={locale}
           title={t.delete}
           onClose={() => {
             if (!categoryBusy) setDeleteTarget(null);
@@ -1350,7 +1411,7 @@ export function App() {
             </p>
             {categoryError && (
               <div className="notice error" role="alert">
-                {categoryError}
+                {uiMessage(categoryError, locale)}
               </div>
             )}
             <div className="dialog-actions">
@@ -1415,7 +1476,7 @@ function Login({
   return (
     <div className="login-page">
       <section className="login-story">
-        <Brand />
+        <Brand vi={locale === "vi"} />
         <div className="login-story-content">
           <span className="login-kicker">SAIGON, ONE STORY AT A TIME</span>
           <h1>
@@ -1444,7 +1505,11 @@ function Login({
             <Cover poi={{ cover: 3, image_id: null, name: "Sài Gòn" }} large />
           </div>
         </div>
-        <small>QUẬN 1 TOURISM · CONTENT STUDIO</small>
+        <small>
+          {vi
+            ? "QUẬN 1 TOURISM · KHÔNG GIAN NỘI DUNG"
+            : "DISTRICT 1 TOURISM · CONTENT STUDIO"}
+        </small>
       </section>
       <section className="login-form-wrap">
         <button
@@ -1490,7 +1555,7 @@ function Login({
           </label>
           {error && (
             <div className="notice error" role="alert">
-              {error}
+              {uiMessage(error, locale)}
             </div>
           )}
           <button className="button primary full-width" disabled={busy}>

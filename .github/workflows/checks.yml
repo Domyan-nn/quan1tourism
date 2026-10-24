@@ -42,6 +42,7 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: node --test tests/cloudflare-map-tiles.test.mjs tests/cloudflare-proxy.test.mjs
+      - run: node --experimental-strip-types --test tests/narration-logic.test.mjs
       - run: npm run check:worker
       - run: node --test tests/cloudflare-worker.test.mjs
       - run: node scripts/release-bundle.mjs pack
@@ -53,12 +54,16 @@ jobs:
           retention-days: 14
           if-no-files-found: error
   postgres:
-    name: PostgreSQL integration
+    name: PostgreSQL integration (${{ matrix.postgres }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres: ['17', '18']
     services:
       postgres:
-        image: postgres:18
+        image: postgres:${{ matrix.postgres }}
         env:
           POSTGRES_USER: ci
           POSTGRES_PASSWORD: disposable-ci-only

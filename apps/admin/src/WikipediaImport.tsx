@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { BookOpen, LoaderCircle, Sparkles } from "lucide-react";
-import { api, ApiError } from "@quan1/api-client";
+import { uiMessage, api, ApiError } from "@quan1/api-client";
 import type { AiJob, Language, WikipediaDraft } from "@quan1/contracts";
 
 type Props = {
@@ -33,7 +33,9 @@ export function WikipediaImport({
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
-  const [jobId, setJobId] = useState(() => localStorage.getItem("quan1-ai-job") ?? "");
+  const [jobId, setJobId] = useState(
+    () => localStorage.getItem("quan1-ai-job") ?? "",
+  );
   const [jobState, setJobState] = useState("");
   const callbacks = useRef({ onApply, onBusy });
   callbacks.current = { onApply, onBusy };
@@ -45,10 +47,17 @@ export function WikipediaImport({
     callbacks.current.onBusy(true);
     async function poll() {
       try {
-        const job = await api<AiJob>(`/admin/ai/jobs/${jobId}`, { signal: controller.signal });
+        const job = await api<AiJob>(`/admin/ai/jobs/${jobId}`, {
+          signal: controller.signal,
+        });
         if (controller.signal.aborted) return;
         setJobState(job.status);
-        if (job.status === "failed") throw new Error(job.error);
+        if (job.status === "failed")
+          throw new Error(
+            document.documentElement.lang === "en"
+              ? "AI generation failed. Check the worker and try again."
+              : "Tạo nội dung AI thất bại. Kiểm tra máy AI rồi thử lại.",
+          );
         if (job.status === "completed" && job.result) {
           callbacks.current.onApply(job.result);
           finish();
@@ -57,7 +66,10 @@ export function WikipediaImport({
       } catch (err) {
         if (controller.signal.aborted) return;
         // Network/server interruptions keep the persisted job; a reload resumes polling.
-        if (err instanceof ApiError && (err.status === 0 || err.status >= 500)) {
+        if (
+          err instanceof ApiError &&
+          (err.status === 0 || err.status >= 500)
+        ) {
           setJobState("reconnecting");
         } else {
           setError((err as Error).message);
@@ -74,7 +86,11 @@ export function WikipediaImport({
       callbacks.current.onBusy(false);
     }
     void poll();
-    return () => { controller.abort(); clearTimeout(timer); callbacks.current.onBusy(false); };
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+      callbacks.current.onBusy(false);
+    };
   }, [jobId]);
   useEffect(() => {
     let ignore = false;
@@ -98,7 +114,8 @@ export function WikipediaImport({
     try {
       if (status?.mode === "worker") {
         const job = await api<AiJob>("/admin/ai/jobs", {
-          method: "POST", body: JSON.stringify({ url: url.trim(), language_codes: selected }),
+          method: "POST",
+          body: JSON.stringify({ url: url.trim(), language_codes: selected }),
         });
         localStorage.setItem("quan1-ai-job", job.id);
         setJobId(job.id);
@@ -209,10 +226,16 @@ export function WikipediaImport({
         <span className="field-hint" role="status">
           {generating
             ? vi
-              ? jobState === "queued" ? "Đang chờ máy AI nhận việc. Bạn có thể tải lại trang và tiếp tục chờ." : jobState === "reconnecting" ? "Đang kết nối lại để lấy kết quả…" : "Máy AI đang tạo bản nháp để quản trị viên kiểm tra…"
-              : jobState === "queued" ? "Waiting for your AI computer. Reloading will resume this request." : "Generating a draft for administrator review…"
+              ? jobState === "queued"
+                ? "Đang chờ máy AI nhận việc. Bạn có thể tải lại trang và tiếp tục chờ."
+                : jobState === "reconnecting"
+                  ? "Đang kết nối lại để lấy kết quả…"
+                  : "Máy AI đang tạo bản nháp để quản trị viên kiểm tra…"
+              : jobState === "queued"
+                ? "Waiting for your AI computer. Reloading will resume this request."
+                : "Generating a draft for administrator review…"
             : status
-              ? `${status.model} · ${status.message}`
+              ? `${status.model} · ${status.ready ? (vi ? "Sẵn sàng" : "Ready") : vi ? "Máy AI chưa sẵn sàng; kiểm tra kết nối và model." : "AI worker unavailable; check its connection and model."}`
               : vi
                 ? "Đang kiểm tra AI local…"
                 : "Checking local AI…"}
@@ -232,7 +255,7 @@ export function WikipediaImport({
       </div>
       {error && (
         <p className="notice error" role="alert">
-          {error}
+          {uiMessage(error, vi ? "vi" : "en")}
         </p>
       )}
     </section>

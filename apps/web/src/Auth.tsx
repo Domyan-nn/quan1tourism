@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Eye, EyeOff, LogOut, UserRound, X } from "lucide-react";
-import { api, ApiError } from "@quan1/api-client";
+import { api, ApiError, uiMessage } from "@quan1/api-client";
 import type { Locale, User } from "@quan1/contracts";
 
 type AuthMode = "login" | "register";
 
 function errorMessage(error: unknown, vi: boolean) {
-  if (vi && error instanceof Error) return error.message;
+  if (vi && error instanceof Error) return uiMessage(error.message, "vi");
   if (error instanceof ApiError) {
     if (error.status === 401)
       return "Your email or password is incorrect. Please try again.";
@@ -22,7 +22,13 @@ function errorMessage(error: unknown, vi: boolean) {
     : "Could not connect to the server. Please try again.";
 }
 
-export function AuthControls({ locale }: { locale: Locale }) {
+export function AuthControls({
+  locale,
+  onLocaleChange,
+}: {
+  locale: Locale;
+  onLocaleChange: () => void;
+}) {
   const vi = locale === "vi";
   const [user, setUser] = useState<User | null>(null);
   const [checking, setChecking] = useState(true);
@@ -112,6 +118,7 @@ export function AuthControls({ locale }: { locale: Locale }) {
       )}
       {mode && (
         <AuthDialog
+          onLocaleChange={onLocaleChange}
           key={mode}
           mode={mode}
           vi={vi}
@@ -134,12 +141,14 @@ function AuthDialog({
   onSwitch,
   onClose,
   onSuccess,
+  onLocaleChange,
 }: {
   mode: AuthMode;
   vi: boolean;
   onSwitch: (mode: AuthMode) => void;
   onClose: () => void;
   onSuccess: (user: User) => void;
+  onLocaleChange: () => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [name, setName] = useState("");
@@ -219,6 +228,14 @@ function AuthDialog({
         <X size={20} />
       </button>
       <span className="eyebrow">SAIGON STORIES</span>
+      <button
+        type="button"
+        className="button secondary"
+        aria-label={vi ? "Ngôn ngữ giao diện" : "Interface language"}
+        onClick={onLocaleChange}
+      >
+        {vi ? "English" : "Tiếng Việt"}
+      </button>
       <h2 id="auth-title">{title}</h2>
       <p className="auth-intro">
         {registering

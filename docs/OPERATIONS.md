@@ -26,8 +26,14 @@ Không cache API hoặc đưa secret vào VITE_*. Các domain/service thật gi�
 
 Release workflow là migration owner duy nhất: advisory lock PG, backup inventory và revision trước/sau.
 Docker CMD và native start command không migrate. Không dùng đồng thời startup migration, Render predeploy và release job.
-Không create_all lúc startup, không downgrade/restore tự động. Revision ứng dụng hiện tại 0008; readiness kiểm tra revision.
+Không create_all lúc startup, không downgrade/restore tự động. Revision ứng dụng hiện tại 0009; readiness kiểm tra revision.
 Rollback ứng dụng chỉ khi binary trước tương thích schema đang có; dữ liệu không tự hạ theo binary.
+
+GPS, TTS, bản dịch AI và phục hồi tên danh mục: [NARRATION-GPS.md](NARRATION-GPS.md).
+Worker PC hiện dùng protocol 2; protocol 1 chỉ nhận Wikipedia, không nhận supplement.
+Không tự cập nhật PC từ cloud; người phụ trách cập nhật/restart worker tương thích.
+Lưu nháp giữ snapshot công khai cũ; muốn gỡ công khai dùng Ẩn. AI lưu nháp sau duyệt, công bố chủ động.
+Binary backend 0008 có readiness revision cứng: phải diễn tập bản tương thích trước rollback trên schema 0009.
 
 - `/api/v1/health/live`: process hoạt động.
 - `/api/v1/health/ready`: DB truy cập được users và Alembic revision đúng 0008; không phụ thuộc Ollama/Internet.

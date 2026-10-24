@@ -72,13 +72,27 @@ test("visitor auth supports English, switching forms and keyboard dismissal", as
 }) => {
   await page.goto("/");
   await page
-    .getByRole("combobox", { name: "Ngôn ngữ thuyết minh", exact: true })
-    .selectOption("en");
+    .getByRole("button", { name: "Ngôn ngữ giao diện", exact: true })
+    .click();
   const signIn = page.getByRole("button", { name: "Sign in", exact: true });
   await signIn.click();
   await expect(
     page.getByRole("dialog", { name: "Sign in", exact: true }),
   ).toBeVisible();
+  const dialog = page.getByRole("dialog", { name: "Sign in", exact: true });
+  await dialog
+    .getByLabel("Email", { exact: true })
+    .fill("locale-test@example.test");
+  await dialog
+    .getByRole("button", { name: "Interface language", exact: true })
+    .click();
+  await expect(
+    page.getByRole("dialog").getByLabel("Email", { exact: true }),
+  ).toHaveValue("locale-test@example.test");
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Ngôn ngữ giao diện", exact: true })
+    .click();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(signIn).toBeFocused();

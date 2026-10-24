@@ -4,7 +4,13 @@ import type { Poi, Status } from "@quan1/contracts";
 import { mediaUrl } from "@quan1/api-client";
 import type { T } from "./i18n";
 
-export function Brand({ compact = false }: { compact?: boolean }) {
+export function Brand({
+  compact = false,
+  vi = true,
+}: {
+  compact?: boolean;
+  vi?: boolean;
+}) {
   return (
     <div className="brand">
       <span className="brand-mark">
@@ -17,7 +23,9 @@ export function Brand({ compact = false }: { compact?: boolean }) {
           <span className="brand-light">
             stories<span className="brand-dot">.</span>
           </span>
-          <small>NHỮNG CÂU CHUYỆN ĐÁNG NGHE</small>
+          <small>
+            {vi ? "NHỮNG CÂU CHUYỆN ĐÁNG NGHE" : "STORIES WORTH LISTENING TO"}
+          </small>
         </div>
       )}
     </div>
@@ -52,7 +60,12 @@ export function Cover({
       className={`place-cover ${large ? "large" : ""}`}
       viewBox="0 0 180 120"
       role="img"
-      aria-label={`Minh họa ${poi.name}`}
+      aria-label={
+        poi.name ||
+        (document.documentElement.lang === "en"
+          ? "Place illustration"
+          : "Minh họa địa điểm")
+      }
     >
       <rect width="180" height="120" fill={bg} />
       <circle cx="142" cy="27" r="14" fill={light} />
@@ -128,11 +141,13 @@ export function Dialog({
   children,
   onClose,
   wide = false,
+  locale = document.documentElement.lang,
 }: {
   title: string;
   children: ReactNode;
   onClose: () => void;
   wide?: boolean;
+  locale?: string;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -162,9 +177,19 @@ export function Dialog({
       <div className="dialog-heading">
         <h2 id={titleId}>{title}</h2>
         <button
+          type="button"
+          className="text-button"
+          aria-label={
+            locale === "en" ? "Interface language" : "Ngôn ngữ giao diện"
+          }
+          onClick={() => window.dispatchEvent(new Event("quan1-ui-language"))}
+        >
+          {locale === "en" ? "English / Tiếng Việt" : "Tiếng Việt / English"}
+        </button>
+        <button
           className="icon-button"
           onClick={onClose}
-          aria-label="Đóng / Close"
+          aria-label={locale === "en" ? "Close" : "Đóng"}
         >
           <X size={21} />
         </button>

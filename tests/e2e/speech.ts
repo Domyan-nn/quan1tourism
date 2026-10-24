@@ -24,9 +24,13 @@ export async function mockSpeech(
       [];
     let cancellations = 0;
     let active: SpeechSynthesisUtterance | null = null;
+    const utterances: SpeechSynthesisUtterance[] = [];
+    let available = locales;
+    let paused = false;
+    let denied = false;
     const synth = Object.assign(new EventTarget(), {
       getVoices: () =>
-        locales.map((lang) => ({
+        available.map((lang) => ({
           lang,
           name: lang,
           voiceURI: lang,
@@ -36,15 +40,24 @@ export async function mockSpeech(
       cancel: () => {
         cancellations++;
         active = null;
+        paused = false;
+      },
+      pause: () => {
+        paused = true;
+      },
+      resume: () => {
+        paused = false;
       },
       speak: (utterance: SpeechSynthesisUtterance) => {
         active = utterance;
+        utterances.push(utterance);
         calls.push({
           text: utterance.text,
           lang: utterance.lang,
           rate: utterance.rate,
           voice: utterance.voice?.voiceURI ?? "",
         });
+        if (denied) return;
         queueMicrotask(() => {
           if (active === utterance)
             utterance.onstart?.(new Event("start") as SpeechSynthesisEvent);
@@ -58,10 +71,29 @@ export async function mockSpeech(
     Object.defineProperty(window, "__speech", {
       value: {
         calls,
+        deny: (value: boolean) => {
+          denied = value;
+        },
+        get paused() {
+          return paused;
+        },
+        get active() {
+          return !!active;
+        },
+        voices: (items: string[]) => {
+          available = items;
+          synth.dispatchEvent(new Event("voiceschanged"));
+        },
+        oldEnd: (index: number) =>
+          utterances[index]?.onend?.(new Event("end") as SpeechSynthesisEvent),
         get cancellations() {
           return cancellations;
         },
-        finish: () => active?.onend?.(new Event("end") as SpeechSynthesisEvent),
+        finish: () => {
+          const item = active;
+          active = null;
+          item?.onend?.(new Event("end") as SpeechSynthesisEvent);
+        },
         fail: () =>
           active?.onerror?.({ error: "network" } as SpeechSynthesisErrorEvent),
       },

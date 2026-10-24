@@ -101,6 +101,8 @@ class PoiInput(BaseModel):
     category_id: str
     latitude: float | None = Field(default=None, ge=-90, le=90)
     longitude: float | None = Field(default=None, ge=-180, le=180)
+    trigger_radius_m: int = Field(default=100, ge=20, le=1000, strict=True)
+    auto_narration_enabled: bool = False
     source: WikipediaSource | None = None
     translations: dict[str, TranslationInput] = Field(default_factory=dict, max_length=100)
     revision: int = Field(default=1, ge=1)
@@ -109,6 +111,8 @@ class PoiInput(BaseModel):
     def coordinate_pair(self):
         if (self.latitude is None) != (self.longitude is None):
             raise ValueError("Both coordinates are required together")
+        if self.auto_narration_enabled and self.latitude is None:
+            raise ValueError("Automatic narration requires coordinates")
         return self
 
 
@@ -127,8 +131,18 @@ class ActionInput(BaseModel):
 
 
 class CategoryInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     name: str = Field(min_length=1, max_length=100)
     color: Literal["green", "orange", "purple", "blue"] = "green"
+
+    @field_validator("name")
+    @classmethod
+    def intact_unicode(cls, value):
+        import unicodedata
+
+        if "\ufffd" in value or "?" in value or any(unicodedata.category(c) == "Cc" for c in value):
+            raise ValueError("Category name contains damaged or control characters; enter the verified Unicode name")
+        return unicodedata.normalize("NFC", value)
 
 
 class LanguageInput(BaseModel):

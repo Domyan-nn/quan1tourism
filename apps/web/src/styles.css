@@ -647,6 +647,20 @@ button:disabled {
 .map-explorer {
   position: relative;
 }
+.gps-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+  border: 1px solid #c6d6bc;
+  border-radius: 12px;
+  background: #fffef9;
+}
+.gps-controls p, .gps-controls small { flex-basis: 100%; margin: 0; }
+.gps-controls small { color: #526943; }
+.header-actions { flex-wrap: wrap; gap: 12px; }
 .map-explorer .place-map {
   height: 640px;
 }

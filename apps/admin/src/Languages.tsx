@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { api } from "@quan1/api-client";
+import { api, uiMessage } from "@quan1/api-client";
 import type { Language } from "@quan1/contracts";
 import { Dialog } from "./components";
 import type { UiLocale } from "./i18n";
@@ -105,6 +105,7 @@ export function LanguageManager({
       </div>
       {form && (
         <Dialog
+          locale={vi ? "vi" : "en"}
           title={
             editing
               ? vi
@@ -217,7 +218,7 @@ export function LanguageManager({
               </label>
               {error && (
                 <p className="notice error" role="alert">
-                  {error}
+                  {uiMessage(error, vi ? "vi" : "en")}
                 </p>
               )}
               <button className="button primary" disabled={busy}>

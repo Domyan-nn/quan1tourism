@@ -24,10 +24,12 @@ export interface Category {
   color: string;
   count: number;
 }
+export type PublicCategory = Omit<Category, "count">;
 export interface Translation {
   title: string;
   text: string;
   tts_ready: boolean;
+  published?: boolean;
 }
 export interface WikipediaSource {
   url: string;
@@ -72,6 +74,12 @@ export interface Poi {
   category_id: string;
   latitude: number | null;
   longitude: number | null;
+  trigger_radius_m?: number;
+  auto_narration_enabled?: boolean;
+  narration_meta?: Record<
+    string,
+    { origin: string; stale: boolean; source_revision?: number; model?: string }
+  >;
   source?: WikipediaSource | null;
   status: Status;
   revision: number;

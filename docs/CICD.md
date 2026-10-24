@@ -9,7 +9,7 @@ Audit ban đầu: [CICD-AUDIT.md](CICD-AUDIT.md). Bằng chứng chạy: [CICD-V
 flowchart TD
   PR[Push hoặc PR] --> BE[Ruff và pytest SQLite]
   PR --> FE[Typecheck web admin edge và proxy tests]
-  PR --> PG[PostgreSQL 18 migration và API concurrency]
+  PR --> PG[PostgreSQL 17 và 18 migration và API concurrency]
   PR --> DK[Docker build locked runtime và smoke]
   PR --> SEC[Gitleaks npm audit pip-audit]
   FE --> PK[Build frontend và Worker dry-run]
@@ -33,7 +33,7 @@ flowchart TD
 ## Required checks
 
 Bật branch protection/ruleset cho nhánh mặc định: bắt buộc PR, review và **Quality gate**,
-**Release bundle**. Các job thành phần: **Backend**, **Frontend and edge**, **PostgreSQL integration**,
+**Release bundle**. Các job thành phần: **Backend**, **Frontend and edge**, **PostgreSQL integration (17)**, **PostgreSQL integration (18)**,
 **Built artifact E2E**, **Docker verification**, **Security**. Gate yêu cầu tất cả thành công;
 failed/cancelled/skipped đều chặn. Không có `continue-on-error`. Không cho bypass không kiểm soát.
 Không dùng `pull_request_target`. CI không nhận deploy secret.
@@ -43,14 +43,18 @@ Lockfile npm được giữ nguyên; uv.lock nâng Pillow lên 13.0.0 để sử
 Playwright cài Chromium bằng `npx playwright install --with-deps chromium`; không phụ thuộc Edge.
 Playwright phục vụ `apps/web/dist` và `/admin/`, không dùng Vite dev server. HTTP ngoài loopback,
 tile, ảnh và TTS được mock; backend tests cấm socket HTTP ngoài loopback.
+Frontend and edge còn chạy `npm run test:narration`: chunk Unicode, voice/script, Haversine, dwell, hysteresis và cooldown.
+E2E GPS/TTS/time được mock trên artifact; gồm tự phát bị chặn, tab ẩn, voice đến trễ, UI locale độc lập,
+Unicode danh mục và duyệt supplement AI. Không cần model thật. Xem [NARRATION-VERIFICATION.md](NARRATION-VERIFICATION.md).
 
-PostgreSQL service dùng major **18** theo bản local đã đọc/chạy. Chưa xác minh major/extension của cloud.
-Owner phải chạy `SHOW server_version` ở cloud bằng công cụ quản trị chỉ đọc; nếu khác, thêm major đó
-vào matrix trước khi bật CD. CI không dùng `DATABASE_URL` cloud. `--postgres` chỉ chấp nhận
+Cloud được đối chiếu READ ONLY ngày 2026-10-23: **17.11**, revision **0008**. CI matrix major **17** và **18**;
+local đã chạy **18.6**, chưa chạy major 17 ở máy này vì không có binaries/container tương ứng.
+Owner xác minh lại version/extension trước khi bật CD; chưa kiểm tra PostGIS. CI không dùng DATABASE_URL cloud. `--postgres` chỉ chấp nhận
 `TEST_POSTGRES_URL` loopback, database `quan1_ci`, mỗi test có schema UUID và cleanup riêng.
-Test từ base/0007 lên head, chạy lặp, so dữ liệu accounts/sessions/POI/bản dịch/media/release/audit/
+Test từ base/0007/0008 lên head 0009, chạy lặp, so dữ liệu accounts/sessions/POI/bản dịch/media/release/audit/
 identity/AI job/lease/worker; kiểm tra RLS, schema và projection của revision trước.
 Toàn bộ API suite, bao gồm cửa sổ 30 phút và concurrent upsert/increment, chạy thêm trên PostgreSQL.
+Có thêm kiểm tra nhiều yêu cầu supplement đồng thời chỉ tạo một active job cùng POI/locale.
 Nhánh PostGIS vẫn cần kiểm thử riêng nếu cloud có extension; image postgres:18 chuẩn không có PostGIS.
 
 Docker production chạy `uv sync --frozen --no-dev --no-install-project`; không cài pip từ khoảng phiên bản.

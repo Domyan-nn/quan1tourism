@@ -216,6 +216,9 @@ test("admin publishes text and visitor listens in both languages with TTS", asyn
   await expect(
     guest.getByRole("heading", { name: enTitle, exact: true }),
   ).toBeVisible();
+  await guest
+    .getByRole("button", { name: "Ngôn ngữ giao diện", exact: true })
+    .click();
   await guest.getByLabel("Speed", { exact: true }).selectOption("1.5");
   await guest
     .getByRole("button", { name: "Listen to narration", exact: true })

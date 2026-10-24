@@ -3,6 +3,11 @@
 Các workflow đã được chuẩn bị trong repo; chưa thực thi trên cloud trong nhiệm vụ này.
 Chỉ người phụ trách có quyền mới bật cấu hình dưới đây. Không tạo DB/service production mới, không đổi domain.
 
+Mã mới dùng schema `0009`, PC worker protocol `2`; chưa áp dụng lên cloud trong đợt GPS/TTS/bản dịch này.
+Backup DB/media và đối chiếu source trước migration; cập nhật/restart PC bằng thao tác riêng của owner.
+Không tự phục hồi tên danh mục production từ dấu hỏi: danh sách ID/nguồn đối chiếu nằm local trong `.runtime/category-repair-review.json` và còn chờ xác minh.
+Xem [NARRATION-GPS.md](NARRATION-GPS.md) cho cách dùng, sửa danh mục trên restore và giới hạn rollback binary 0008.
+
 ## Một lần trước khi bật CD
 
 1. GitHub Settings → Rules → ruleset nhánh mặc định: bật required checks trong [CICD.md](CICD.md), review PR,
@@ -22,7 +27,8 @@ Chỉ người phụ trách có quyền mới bật cấu hình dưới đây. K
 5. Render environment: kiểm tra PostgreSQL TLS, migration owner, DB thật, MEDIA_ROOT và disk bền vững hiện có.
    Staging cần DB/media/origin/service/credential riêng do owner cấp; nếu chưa có thì workflow dừng ở preflight.
    Không tự mua plan/disk hoặc tạo cloud service trong nhiệm vụ này. Kiểm tra major PostgreSQL cloud bằng `SHOW server_version`;
-   CI hiện test 18; kiểm tra PostGIS, quyền extension và thêm matrix tương ứng nếu cần.
+   Cloud đã đọc phiên bản 17.11, revision 0008; CI chuẩn bị matrix 17/18, local có bằng chứng chạy 18.6.
+   Kiểm tra PostGIS, quyền extension và kết quả cả hai major trong CI trước release.
 6. Cloudflare → Workers & Pages → chọn Worker hiện có → Settings → Builds: ngắt Git integration hoặc tắt automatic builds/deploys
    cho production và staging. Tắt Pages auto deployment nếu vẫn còn project phụ cùng domain.
    Chỉ đổi deploy command thành `versions upload` chưa đủ để có một nguồn release duy nhất; ưu tiên ngắt auto-deploy.

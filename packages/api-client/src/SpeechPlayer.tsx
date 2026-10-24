@@ -1,36 +1,24 @@
 import { useEffect, useId, useRef, useState } from "react";
 import "./speech.css";
+import { nextChunk, voiceMatches } from "./speech-chunks";
 
 let owner: string | null = null;
-
-// Small utterances avoid platform limits when reading long stories (up to 30,000 characters).
-function nextChunk(text: string, start: number) {
-  let end = Math.min(start + 180, text.length);
-  if (end < text.length) {
-    const fragment = text.slice(start, end);
-    const boundary = Math.max(
-      fragment.lastIndexOf(" "),
-      fragment.lastIndexOf("。"),
-      fragment.lastIndexOf("."),
-      fragment.lastIndexOf("\n"),
-    );
-    if (boundary > 80) end = start + boundary + 1;
-    const code = text.charCodeAt(end - 1);
-    if (code >= 0xd800 && code <= 0xdbff) end--;
-  }
-  return text.slice(start, end);
-}
+export const isSpeechBusy = () => owner !== null;
 
 export function SpeechPlayer({
   text,
   speechLocale,
   uiLocale = "vi",
   onStarted,
+  autoRequest = 0,
+  onAutoBlocked,
 }: {
   text: string;
   speechLocale: string;
   uiLocale?: string;
   onStarted?: () => void;
+  autoRequest?: number;
+  onAutoBlocked?: () => void;
 }) {
   const vi = uiLocale === "vi";
   const id = useId();
@@ -41,19 +29,26 @@ export function SpeechPlayer({
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [voiceURI, setVoiceURI] = useState("");
   const [rate, setRate] = useState(1);
-  const [state, setState] = useState<"idle" | "playing" | "paused">("idle");
+  const [state, setState] = useState<
+    "ready" | "playing" | "paused" | "stopped" | "error"
+  >("ready");
   const [position, setPosition] = useState(0);
   const [error, setError] = useState("");
   const generation = useRef(0);
   const utterance = useRef<SpeechSynthesisUtterance | null>(null);
   const cursor = useRef(0);
   const started = useRef(false);
+  const autoOwned = useRef(false);
+  const attempted = useRef(0);
+  const startTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
+  const blockedRef = useRef(onAutoBlocked);
+  blockedRef.current = onAutoBlocked;
   const onStartedRef = useRef(onStarted);
   onStartedRef.current = onStarted;
-  const matching = voices.filter(
-    (voice) =>
-      voice.lang.replace(/_/g, "-").split("-")[0].toLowerCase() ===
-      speechLocale.split("-")[0].toLowerCase(),
+  const matching = voices.filter((voice) =>
+    voiceMatches(speechLocale, voice.lang),
   );
   const voice =
     matching.find((v) => v.voiceURI === voiceURI) ??
@@ -73,11 +68,12 @@ export function SpeechPlayer({
     started.current = false;
     cursor.current = 0;
     setPosition(0);
-    setState("idle");
+    setState("ready");
     setError("");
     setVoiceURI("");
     return () => {
       generation.current++;
+      clearTimeout(startTimer.current);
       if (supported && owner === id) {
         owner = null;
         window.speechSynthesis.cancel();
@@ -90,21 +86,48 @@ export function SpeechPlayer({
     const stopOther = (event: Event) => {
       if ((event as CustomEvent<string>).detail === id) return;
       generation.current++;
-      setState("idle");
+      clearTimeout(startTimer.current);
+      setState("stopped");
       utterance.current = null;
     };
     window.addEventListener("quan1-speech-start", stopOther);
-    return () => window.removeEventListener("quan1-speech-start", stopOther);
+    const stopAuto = () => {
+      if (autoOwned.current) stop();
+    };
+    window.addEventListener("quan1-speech-stop-auto", stopAuto);
+    return () => {
+      window.removeEventListener("quan1-speech-start", stopOther);
+      window.removeEventListener("quan1-speech-stop-auto", stopAuto);
+    };
   }, [id]);
+
+  useEffect(() => {
+    if (!autoRequest || attempted.current === autoRequest) return;
+    if (!voice) {
+      const timer = setTimeout(() => {
+        attempted.current = autoRequest;
+        blockedRef.current?.();
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+    attempted.current = autoRequest;
+    if (isSpeechBusy() || document.hidden) {
+      blockedRef.current?.();
+      return;
+    }
+    autoOwned.current = true;
+    play(0);
+  }, [autoRequest, voice]);
 
   function stop(reset = true) {
     generation.current++;
+    clearTimeout(startTimer.current);
     if (supported && owner === id) {
       owner = null;
       window.speechSynthesis.cancel();
     }
     utterance.current = null;
-    setState("idle");
+    setState("stopped");
     if (reset) {
       cursor.current = 0;
       setPosition(0);
@@ -113,7 +136,12 @@ export function SpeechPlayer({
 
   function play(start = cursor.current) {
     if (!supported || !voice || !text.trim()) return;
-    if (state !== "paused") started.current = false;
+    if (state === "paused" && owner === id) {
+      window.speechSynthesis.resume();
+      setState("playing");
+      return;
+    }
+    started.current = false;
     window.dispatchEvent(new CustomEvent("quan1-speech-start", { detail: id }));
     generation.current++;
     const token = generation.current;
@@ -126,7 +154,7 @@ export function SpeechPlayer({
       if (offset >= text.length) {
         cursor.current = 0;
         setPosition(text.length);
-        setState("idle");
+        setState("ready");
         owner = null;
         utterance.current = null;
         return;
@@ -137,8 +165,12 @@ export function SpeechPlayer({
       item.lang = speechLocale;
       item.voice = voice!;
       item.rate = rate;
+      let chunkStarted = false;
       item.onstart = () => {
-        if (generation.current === token && !started.current) {
+        if (generation.current !== token || utterance.current !== item) return;
+        chunkStarted = true;
+        clearTimeout(startTimer.current);
+        if (!started.current) {
           started.current = true;
           onStartedRef.current?.();
         }
@@ -146,25 +178,51 @@ export function SpeechPlayer({
       cursor.current = offset;
       setPosition(offset);
       item.onboundary = (event) => {
-        if (generation.current === token) {
+        if (generation.current === token && utterance.current === item) {
           cursor.current = offset + event.charIndex;
           setPosition(cursor.current);
         }
       };
-      item.onend = () => speak(offset + chunk.length);
-      item.onerror = (event) => {
-        if (generation.current !== token) return;
-        owner = null;
-        setState("idle");
-        utterance.current = null;
-        if (event.error !== "canceled" && event.error !== "interrupted")
-          setError(
-            vi
-              ? "Không phát được giọng đọc. Hãy chọn giọng khác hoặc thử lại."
-              : "Speech failed. Choose another voice or try again.",
-          );
+      item.onend = () => {
+        if (generation.current !== token || utterance.current !== item) return;
+        clearTimeout(startTimer.current);
+        if (!chunkStarted) {
+          item.onerror?.({ error: "not-allowed" } as SpeechSynthesisErrorEvent);
+          return;
+        }
+        speak(offset + chunk.length);
       };
-      window.speechSynthesis.speak(item);
+      item.onerror = () => {
+        if (generation.current !== token || utterance.current !== item) return;
+        generation.current++;
+        clearTimeout(startTimer.current);
+        owner = null;
+        setState("error");
+        utterance.current = null;
+        if (autoOwned.current) blockedRef.current?.();
+        setError(
+          document.documentElement.lang === "vi"
+            ? "Không phát được giọng đọc. Hãy chọn giọng khác hoặc thử lại."
+            : "Speech failed. Choose another voice or try again.",
+        );
+      };
+      try {
+        window.speechSynthesis.speak(item);
+        if (!chunkStarted)
+          startTimer.current = setTimeout(() => {
+            if (generation.current !== token || chunkStarted) return;
+            stop(false);
+            setState("error");
+            setError(
+              document.documentElement.lang === "vi"
+                ? "Chạm để nghe; trình duyệt chưa cho phép phát tự động."
+                : "Tap to listen; the browser has not allowed automatic playback.",
+            );
+            if (autoOwned.current) blockedRef.current?.();
+          }, 5000);
+      } catch {
+        item.onerror?.({ error: "not-allowed" } as SpeechSynthesisErrorEvent);
+      }
     }
     speak(start >= text.length ? 0 : start);
   }
@@ -172,6 +230,7 @@ export function SpeechPlayer({
   return (
     <div
       className="speech-player"
+      data-state={state}
       aria-label={vi ? "Đọc văn bản thành giọng nói" : "Text to speech"}
     >
       {!supported ? (
@@ -193,8 +252,10 @@ export function SpeechPlayer({
           className="button"
           disabled={!voice || !text.trim()}
           onClick={() => {
+            if (state !== "playing" && state !== "paused")
+              autoOwned.current = false;
             if (state === "playing") {
-              stop(false);
+              window.speechSynthesis.pause();
               setState("paused");
             } else play();
           }}
@@ -214,7 +275,9 @@ export function SpeechPlayer({
         <button
           type="button"
           className="button secondary"
-          disabled={state === "idle" && position === 0}
+          disabled={
+            (state === "ready" || state === "stopped") && position === 0
+          }
           onClick={() => stop()}
         >
           {vi ? "Dừng" : "Stop"}
@@ -273,7 +336,17 @@ export function SpeechPlayer({
           }}
         />
       </label>
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <p role="alert">
+          {error.includes("Chạm") || error.includes("Tap to listen")
+            ? vi
+              ? "Chạm để nghe; trình duyệt chưa cho phép phát tự động."
+              : "Tap to listen; the browser has not allowed automatic playback."
+            : vi
+              ? "Không phát được giọng đọc. Hãy chọn giọng khác hoặc thử lại."
+              : "Speech failed. Choose another voice or try again."}
+        </p>
+      )}
     </div>
   );
 }

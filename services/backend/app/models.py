@@ -79,6 +79,9 @@ class Poi(Base):
     category_id: Mapped[str] = mapped_column(ForeignKey("categories.id"), index=True)
     latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    trigger_radius_m: Mapped[int] = mapped_column(Integer, default=100, server_default="100")
+    auto_narration_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    narration_meta: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
     source: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="draft", index=True)
     revision: Mapped[int] = mapped_column(Integer, default=1)
@@ -94,6 +97,9 @@ class Poi(Base):
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False)
     __mapper_args__ = {"version_id_col": revision, "version_id_generator": False}
     __table_args__ = (
+        CheckConstraint("trigger_radius_m BETWEEN 20 AND 1000", name="valid_trigger_radius"),
+        CheckConstraint("NOT auto_narration_enabled OR (latitude IS NOT NULL AND longitude IS NOT NULL)",
+                        name="auto_narration_coordinates"),
         CheckConstraint("view_count >= 0 AND listen_count >= 0", name="nonnegative_poi_statistics"),
         CheckConstraint(
             "status IN ('draft','in_review','approved','published','archived')", name="valid_status"
@@ -208,4 +214,5 @@ class AiWorker(Base):
     seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     model: Mapped[str] = mapped_column(String(100))
     ready: Mapped[bool] = mapped_column(Boolean, default=False)
+    protocol: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)

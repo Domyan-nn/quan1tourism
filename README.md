@@ -1,6 +1,6 @@
 # Saigon Stories · Quận 1 Tourism
 
-Trang quản trị nội dung thuyết minh du lịch bằng **React + TypeScript**, kết nối **FastAPI + SQLAlchemy + Alembic**. Tiếng Việt mặc định, có giao diện tiếng Anh và cỡ chữ lớn. Bản triển khai có quản trị nội dung, bản đồ du khách và thống kê lượt xem/lượt nghe. Chi tiết: [bản đồ và thống kê](docs/MAPS-STATISTICS.md).
+Trang quản trị nội dung thuyết minh du lịch bằng **React + TypeScript**, kết nối **FastAPI + SQLAlchemy + Alembic**. Tiếng Việt mặc định, có giao diện tiếng Anh và cỡ chữ lớn. Có bản đồ du khách và thống kê lượt xem/lượt nghe. GPS foreground, bán kính theo địa điểm, UI VI/EN độc lập với ngôn ngữ bài và bổ sung bản dịch qua Ollama queue: [hướng dẫn](docs/NARRATION-GPS.md), [kiểm thử](docs/NARRATION-VERIFICATION.md). Các thay đổi mới chưa triển khai cloud.
 
 ## Chạy local
 
@@ -95,7 +95,7 @@ Khi cập nhật từ bản cũ, dừng backend, sao lưu DB và chạy `uv run 
 6. **Vị trí:** mở **Chỉnh sửa nâng cao**, tìm địa chỉ, nhấp bản đồ, kéo ghim hoặc nhập tọa độ. Khôi phục dùng lần lưu gần nhất; Hủy bỏ thay đổi chưa lưu. Chuyển bước/chọn ảnh không tự lưu.
 7. **Du khách:** đổi Danh sách/Bản đồ, chọn ghim để xem và nghe ngay trên bản đồ, hoặc mở trang chi tiết. Danh sách xếp theo lượt xem giảm dần; số lượt chỉ admin được xem.
 
-Chỉ admin được thay đổi địa điểm, ảnh và trạng thái; editor/reviewer có thể đọc và xem trước. Backend kiểm tra quyền cho mọi thao tác. Chọn Nháp/Ẩn gỡ địa điểm khỏi công khai nhưng giữ lịch sử và thống kê. Xem trước/nghe thử của nhân sự không tăng lượt. Khi nâng cấp, chạy migration `0008` trước backend mới; xem [bản đồ và thống kê](docs/MAPS-STATISTICS.md).
+Chỉ admin được thay đổi địa điểm, ảnh và trạng thái; editor/reviewer có thể đọc và xem trước. Backend kiểm tra quyền cho mọi thao tác. Lưu Nháp giữ bản công khai cũ nếu có; Ẩn gỡ công khai, giữ lịch sử và thống kê. Nhân sự xem/nghe thử không tăng lượt. Khi phát hành có thẩm quyền, chạy migration `0009` một lần qua release owner trước backend mới; không chạy lệnh local vào production. Xem [bản đồ và thống kê](docs/MAPS-STATISTICS.md).
 
 Trong **Ngôn ngữ & thuyết minh**, quản trị viên thêm/sửa mã ngôn ngữ, tên bản địa, mã giọng đọc, thứ tự, hướng chữ, trạng thái bật và yêu cầu bắt buộc. Có sẵn 15 lựa chọn: Việt, Anh, Trung giản thể/phồn thể, Nhật, Hàn, Pháp, Đức, Tây Ban Nha, Ý, Bồ Đào Nha, Nga, Thái, Indonesia, Ả Rập. Thêm ngôn ngữ mới không cần sửa mã nguồn hay migration. Tắt ngôn ngữ giữ lại văn bản. Giao diện quản trị/đăng nhập vẫn có tiếng Việt và tiếng Anh; danh sách này là ngôn ngữ nội dung thuyết minh.
 

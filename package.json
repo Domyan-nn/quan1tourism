@@ -17,7 +17,8 @@
     "typecheck:edge": "tsc --noEmit -p tsconfig.edge.json",
     "test:edge": "node --test tests/cloudflare-map-tiles.test.mjs tests/cloudflare-proxy.test.mjs",
     "check:worker": "wrangler deploy --dry-run --outdir .runtime/worker-bundle",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:narration": "node --experimental-strip-types --test tests/narration-logic.test.mjs"
   },
   "engines": {
     "node": ">=22.12.0"

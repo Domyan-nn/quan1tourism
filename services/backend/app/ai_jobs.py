@@ -68,6 +68,7 @@ def queue_status(db):
     online = bool(worker and aware(worker.seen_at) > now() - timedelta(seconds=90))
     return {
         "mode": "worker", "ready": bool(online and worker.ready),
+        "worker_protocol": worker.protocol if worker else None,
         "model": worker.model if worker else "Ollama",
         "message": ("Máy AI sẵn sàng" if worker.ready else "Model trên máy AI chưa sẵn sàng")
         if online else "Máy AI chưa kết nối. Mở Ollama và chạy trình nhận việc trên máy của bạn.",
@@ -143,6 +144,7 @@ class Heartbeat(BaseModel):
     model_config = ConfigDict(extra="forbid")
     model: str = Field(min_length=1, max_length=100)
     ready: bool
+    protocol: int = Field(default=1, ge=1, le=2)
 
 
 @router.post("/worker/heartbeat", dependencies=[Depends(worker_auth)])
@@ -153,6 +155,7 @@ def heartbeat(data: Heartbeat, db=Depends(get_db)):
         worker = AiWorker(id="local", model=data.model, ready=data.ready)
         db.add(worker)
     worker.model, worker.ready, worker.seen_at = data.model, data.ready, now()
+    worker.protocol = data.protocol
     db.commit()
     return {"status": "ok"}
 
@@ -166,10 +169,18 @@ def expire_jobs(db):
     db.commit()
 
 
+class ClaimInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    protocol: int = Field(default=1, ge=1, le=2)
+
+
 @router.post("/worker/claim", dependencies=[Depends(worker_auth)])
-def claim(db=Depends(get_db)):
+def claim(data: ClaimInput, db=Depends(get_db)):
     expire_jobs(db)
     eligible = or_(AiJob.status == "queued", and_(AiJob.status == "running", AiJob.lease_until < now()))
+    if data.protocol < 2:
+        kind = AiJob.payload["kind"].as_string()
+        eligible = and_(eligible, or_(kind.is_(None), kind != "supplement"))
     job_id = db.scalar(select(AiJob.id).where(eligible).order_by(AiJob.created_at).limit(1))
     if not job_id:
         return {"job": None}
@@ -192,6 +203,8 @@ class Completion(BaseModel):
     missing_fields: list[str] = Field(default_factory=list, max_length=10)
     elapsed_seconds: float = Field(default=0, ge=0, le=900)
     error: str = Field(default="", max_length=1000)
+    translation: dict | None = None
+    model: str = Field(default="", max_length=100)
 
 
 @router.post("/worker/jobs/{job_id}/complete", dependencies=[Depends(worker_auth)])
@@ -207,6 +220,20 @@ def complete(job_id: str, data: Completion, db=Depends(get_db)):
     if data.error:
         # Display only a generic error; never trust/log exceptions containing credentials.
         error = "Máy AI chưa tạo được nội dung. Kiểm tra Ollama rồi thử lại."
+    elif job.payload.get("kind") == "supplement":
+        from .narration_jobs import quality_issues
+        from .schemas import TranslationInput
+
+        try:
+            translation = TranslationInput.model_validate(data.translation)
+            issues = quality_issues(job.payload["locale"], translation)
+        except ValueError:
+            issues = ["invalid_schema"]
+        error = "AI output needs regeneration or manual correction: " + ", ".join(issues) if issues else ""
+        if not error:
+            result = {"translation": translation.model_dump(), "locale": job.payload["locale"],
+                      "model": data.model, "generated_at": now().isoformat(), "review_required": True,
+                      "warnings": ["Verify target language and facts; automatic checks cannot establish accuracy"]}
     else:
         draft, payload = data.draft, job.payload
         if not draft or not draft.source or (

@@ -13,12 +13,13 @@ import {
 } from "lucide-react";
 import {
   api,
+  uiMessage,
   mediaUrl,
   SourceAttribution,
   SpeechPlayer,
   recordEngagement,
 } from "@quan1/api-client";
-import type { Language, Locale, Poi } from "@quan1/contracts";
+import type { PublicCategory, Language, Locale, Poi } from "@quan1/contracts";
 import { AuthControls } from "./Auth";
 import { MapExplorer } from "./MapExplorer";
 import "@fontsource/be-vietnam-pro/400.css";
@@ -27,10 +28,14 @@ import "@fontsource/be-vietnam-pro/600.css";
 import "./styles.css";
 
 function Visitor() {
+  const [uiLocale, setUiLocale] = useState(() =>
+    localStorage.getItem("visitor-ui-locale") === "en" ? "en" : "vi",
+  );
   const [locale, setLocale] = useState<Locale>(
     () => localStorage.getItem("visitor-locale") || "vi",
   );
   const [languages, setLanguages] = useState<Language[]>([]);
+  const [categories, setCategories] = useState<PublicCategory[]>([]);
   const [languageError, setLanguageError] = useState("");
   const [pois, setPois] = useState<Poi[]>([]);
   const [selected, setSelected] = useState<Poi | null>(null);
@@ -40,10 +45,15 @@ function Visitor() {
   const [query, setQuery] = useState("");
   const [retry, setRetry] = useState(0);
   const [online, setOnline] = useState(navigator.onLine);
-  const vi = locale === "vi";
+  const vi = uiLocale === "vi";
   const language = languages.find((item) => item.code === locale);
   useEffect(() => {
     let ignore = false;
+    api<PublicCategory[]>("/categories")
+      .then((items) => {
+        if (!ignore) setCategories(items);
+      })
+      .catch(() => {});
     api<Language[]>("/languages")
       .then((items) => {
         if (ignore) return;
@@ -62,9 +72,12 @@ function Visitor() {
   }, [retry]);
   useEffect(() => {
     if (!language) return;
-    document.documentElement.lang = locale === "vi" ? "vi" : "en";
     localStorage.setItem("visitor-locale", locale);
   }, [locale, language?.code]);
+  useEffect(() => {
+    document.documentElement.lang = uiLocale;
+    localStorage.setItem("visitor-ui-locale", uiLocale);
+  }, [uiLocale]);
   useEffect(() => {
     const update = () => setOnline(navigator.onLine);
     window.addEventListener("online", update);
@@ -130,6 +143,13 @@ function Visitor() {
           </span>
         </a>
         <div className="header-actions">
+          <button
+            className="button secondary"
+            aria-label={vi ? "Ngôn ngữ giao diện" : "Interface language"}
+            onClick={() => setUiLocale(vi ? "en" : "vi")}
+          >
+            {vi ? "Tiếng Việt / English" : "English / Tiếng Việt"}
+          </button>
           <label className="language">
             <Globe2 size={16} />
             <select
@@ -149,7 +169,10 @@ function Visitor() {
               )}
             </select>
           </label>
-          <AuthControls locale={locale} />
+          <AuthControls
+            locale={uiLocale}
+            onLocaleChange={() => setUiLocale(vi ? "en" : "vi")}
+          />
         </div>
       </header>
       <main>
@@ -162,7 +185,7 @@ function Visitor() {
         )}
         {languageError ? (
           <div className="empty">
-            <p role="alert">{languageError}</p>
+            <p role="alert">{uiMessage(languageError, vi ? "vi" : "en")}</p>
             <button className="button" onClick={() => setRetry((n) => n + 1)}>
               {vi ? "Thử lại" : "Try again"}
             </button>
@@ -176,7 +199,7 @@ function Visitor() {
             <h2>
               {vi ? "Chưa tải được nội dung" : "Could not load this story"}
             </h2>
-            <p role="alert">{error}</p>
+            <p role="alert">{uiMessage(error, vi ? "vi" : "en")}</p>
             <button className="button" onClick={() => setRetry((n) => n + 1)}>
               {vi ? "Thử lại" : "Try again"}
             </button>
@@ -203,13 +226,22 @@ function Visitor() {
                 </div>
               )}
             </div>
-            <span className="eyebrow">QUẬN 1 · SAIGON STORIES</span>
+            <span className="eyebrow">
+              {vi ? "QUẬN 1" : "DISTRICT 1"} · SAIGON STORIES
+            </span>
             <h1 lang={locale} dir={language?.direction}>
               {narration?.title || selected.name}
             </h1>
             <p className="address">
               <MapPin size={15} />
               {selected.address}
+            </p>
+            <p>
+              {
+                categories.find(
+                  (category) => category.id === selected.category_id,
+                )?.name
+              }
             </p>
             {selected.is_demo && (
               <p className="notice">
@@ -336,6 +368,8 @@ function Visitor() {
                 places={list}
                 languages={languages}
                 locale={locale}
+                uiLocale={uiLocale}
+                categories={categories}
                 onDetail={openDetail}
               />
             ) : (
@@ -361,11 +395,18 @@ function Visitor() {
                       )}
                     </div>
                     <div>
-                      <small>QUẬN 1</small>
+                      <small>{vi ? "QUẬN 1" : "DISTRICT 1"}</small>
                       <h3 lang={locale} dir={language?.direction}>
                         {p.translations[locale]?.title || p.name}
                       </h3>
                       <p>{p.address}</p>
+                      <p>
+                        {
+                          categories.find(
+                            (category) => category.id === p.category_id,
+                          )?.name
+                        }
+                      </p>
                       <p className="place-description">
                         {p.short_description ||
                           p.translations[locale]?.text.slice(0, 150)}

@@ -28,8 +28,11 @@ from .wikipedia import generate_draft, ollama_status
 from .ai_jobs import prepare_import, queue_status, router as ai_router, worker_mode
 from .duplicates import ensure_unique, find_duplicates, reserve_identities
 
+from .narration_jobs import router as narration_router
+
 app = FastAPI(title="Saigon Stories API", version="0.1.0")
 app.include_router(ai_router)
+app.include_router(narration_router)
 editors = require("editor", "reviewer", "admin")
 login_attempts: dict[str, deque] = defaultdict(deque)
 registration_attempts: dict[str, deque] = defaultdict(deque)
@@ -95,14 +98,14 @@ def live():
 @app.get("/api/v1/version")
 def version():
     return {"release": os.getenv("RELEASE_SHA") or os.getenv("RENDER_GIT_COMMIT", "local"),
-            "worker_protocol": 1, "schema_revision": "0008"}
+            "worker_protocol": 2, "schema_revision": "0009"}
 
 
 @app.get("/api/v1/health/ready")
 def readiness(db: DbSession = Depends(get_db)):
     try:
         db.execute(text("SELECT 1 FROM users LIMIT 1"))
-        if db.execute(text("SELECT version_num FROM alembic_version")).scalar() != "0008":
+        if db.execute(text("SELECT version_num FROM alembic_version")).scalar() != "0009":
             raise HTTPException(503, "Database migration is not ready.")
     except SQLAlchemyError:
         raise HTTPException(503, "Database is not ready.") from None
@@ -232,6 +235,14 @@ def update_language(
     return save_language(db, user, data, language)
 
 
+@app.get("/api/v1/categories")
+def public_categories(db: DbSession = Depends(get_db)):
+    query = select(Category).join(Release, Release.snapshot["category_id"].as_string() == Category.id).join(
+        Poi, Poi.id == Release.poi_id).where(Release.is_current.is_(True), Poi.status != "archived")
+    return [{"id": c.id, "name": c.name, "color": c.color}
+            for c in db.scalars(query.distinct().order_by(Category.name))]
+
+
 @app.get("/api/v1/admin/categories")
 def categories(db: DbSession = Depends(get_db), user: User = Depends(editors)):
     return [
@@ -258,6 +269,22 @@ def create_category(data: CategoryInput, db: DbSession = Depends(get_db), user: 
         db.rollback()
         raise HTTPException(409, "Tên danh mục đã tồn tại.")
     return {"id": category.id, "name": category.name, "color": category.color, "count": 0}
+
+
+@app.put("/api/v1/admin/categories/{category_id}")
+def rename_category(category_id: str, data: CategoryInput, db: DbSession = Depends(get_db),
+                    user: User = Depends(require("admin"))):
+    category = db.get(Category, category_id)
+    if not category:
+        raise HTTPException(404, "Category not found")
+    category.name, category.color = data.name, data.color
+    audit(db, user, None, "category_update", category.id)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, "Category name already exists")
+    return {"id": category.id, "name": category.name, "color": category.color}
 
 
 @app.delete("/api/v1/admin/categories/{category_id}", status_code=204)
@@ -332,7 +359,12 @@ def summary(db: DbSession = Depends(get_db), user: User = Depends(editors)):
 def apply_input(poi: Poi, data: PoiInput, db: DbSession):
     if not data.name.strip() or not data.address.strip() or not db.get(Category, data.category_id):
         raise HTTPException(422, "Vui lòng nhập tên, địa chỉ và chọn danh mục hợp lệ.")
-    for key in ("name", "address", "short_description", "category_id", "latitude", "longitude"):
+    from .narration_jobs import source_hash, translation_hash
+
+    old_source = source_hash(poi)
+    old_translations = dict(poi.translations or {})
+    for key in ("name", "address", "short_description", "category_id", "latitude", "longitude",
+                "trigger_radius_m", "auto_narration_enabled"):
         setattr(poi, key, getattr(data, key).strip()
                 if key in ("name", "address", "short_description") else getattr(data, key))
     translations = dict(poi.translations or {})
@@ -342,12 +374,21 @@ def apply_input(poi: Poi, data: PoiInput, db: DbSession):
     poi.translations = translations
     if "source" in data.model_fields_set:
         poi.source = data.source.model_dump() if data.source else None
+    meta = dict(poi.narration_meta or {})
+    if old_source != source_hash(poi):
+        meta = {code: {**entry, "stale": True} for code, entry in meta.items()}
+    for code, tr in translations.items():
+        if translation_hash(tr) != translation_hash(old_translations.get(code, {})):
+            meta[code] = {"origin": "manual", "source_hash": source_hash(poi), "stale": False}
+    poi.narration_meta = meta
 
 
 def save_visibility(db, poi, status):
     if status is None:
         return
     poi.status = status
+    if status == "draft":
+        return  # Draft changes must never remove or modify the last public snapshot.
     if status == "published":
         ready(poi, db)
     for release in db.scalars(select(Release).where(Release.poi_id == poi.id, Release.is_current.is_(True))):
@@ -562,7 +603,7 @@ def public_pois(locale: str = Query("vi", max_length=35), db: DbSession = Depend
             text_snapshot(r.snapshot)
             for r in db.scalars(
                 select(Release).join(Poi, Poi.id == Release.poi_id)
-                .where(Release.is_current.is_(True), Poi.status == "published")
+                .where(Release.is_current.is_(True), Poi.status != "archived")
                 .order_by(Poi.view_count.desc(), Poi.id.asc())
             )
         ]
@@ -575,7 +616,7 @@ def public_poi(poi_id: str, request: Request, locale: str = Query("vi", max_leng
                db: DbSession = Depends(get_db)):
     get_language(db, locale, enabled_only=True)
     release = db.scalar(select(Release).join(Poi, Poi.id == Release.poi_id).where(
-        Release.poi_id == poi_id, Release.is_current.is_(True), Poi.status == "published"))
+        Release.poi_id == poi_id, Release.is_current.is_(True), Poi.status != "archived"))
     if not release:
         raise HTTPException(404, "Địa điểm này chưa được xuất bản hoặc đã được lưu trữ.")
     snapshot = text_snapshot(release.snapshot)
@@ -589,7 +630,7 @@ def public_event(poi_id: str, kind: str, request: Request, db: DbSession = Depen
     if kind not in ("view", "listen"):
         raise HTTPException(422, "Sự kiện không hợp lệ.")
     if not db.scalar(select(Release.id).join(Poi, Poi.id == Release.poi_id).where(
-        Release.poi_id == poi_id, Release.is_current.is_(True), Poi.status == "published")):
+        Release.poi_id == poi_id, Release.is_current.is_(True), Poi.status != "archived")):
         raise HTTPException(404, "Địa điểm chưa được công bố.")
     record(db, request, poi_id, kind)
 

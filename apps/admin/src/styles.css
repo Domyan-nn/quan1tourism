@@ -3656,6 +3656,21 @@ th {
   background: #edf3e4;
   border-radius: 8px;
 }
+.translation-supplement {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 20px;
+  min-width: 0;
+}
+.editor-footer > div { flex-wrap: wrap; min-width: 0; max-width: 100%; }
+.translation-supplement table { display: block; overflow-x: auto; width: 100%; margin: 16px 0; }
+.translation-supplement th, .translation-supplement td { padding: 12px; text-align: start; vertical-align: top; }
+.translation-supplement .button { margin: 4px; white-space: normal; }
+.translation-supplement label { line-height: 1.6; }
+.ai-review { margin-top: 20px; }
+.ai-review textarea { min-height: 240px; }
+.dialog-heading { flex-wrap: wrap; }
 .staged-image {
   width: 100px;
   height: 80px;

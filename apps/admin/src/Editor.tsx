@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import {
   api,
+  uiMessage,
   SourceAttribution,
   SpeechPlayer,
   LocationEditor,
@@ -35,6 +36,7 @@ import type {
 import { Badge, Cover, Dialog, Loading } from "./components";
 import { messages, type UiLocale } from "./i18n";
 import { WikipediaImport } from "./WikipediaImport";
+import { NarrationTranslations } from "./NarrationTranslations";
 
 type Props = {
   initial: Poi | "new";
@@ -57,6 +59,8 @@ const inputData = (p: Poi) => ({
   category_id: p.category_id,
   latitude: p.latitude,
   longitude: p.longitude,
+  trigger_radius_m: p.trigger_radius_m ?? 100,
+  auto_narration_enabled: p.auto_narration_enabled ?? false,
   source: p.source ?? null,
   translations: Object.fromEntries(
     Object.entries(p.translations).map(([l, tr]) => [
@@ -422,6 +426,7 @@ export function Editor({
 
   return (
     <Dialog
+      locale={locale}
       wide
       title={saved.id ? (vi ? "Chỉnh sửa địa điểm" : "Edit place") : t.add}
       onClose={close}
@@ -519,13 +524,13 @@ export function Editor({
             {error && (
               <div className="notice error" role="alert">
                 <CircleAlert size={18} />
-                <span>{error}</span>
+                <span>{uiMessage(error, vi ? "vi" : "en")}</span>
               </div>
             )}
             {feedback && (
               <div className="notice success" role="status">
                 <Check size={18} />
-                <span>{feedback}</span>
+                <span>{uiMessage(feedback, vi ? "vi" : "en", "success")}</span>
               </div>
             )}
             {step === 0 && (
@@ -727,6 +732,29 @@ export function Editor({
             )}
             {step === 1 && (
               <div className="editor-fields">
+                {administrator && saved.id && (
+                  <NarrationTranslations
+                    onEdit={(code) => {
+                      setLang(code);
+                      requestAnimationFrame(() =>
+                        document
+                          .querySelector<HTMLTextAreaElement>(
+                            ".narration-input",
+                          )
+                          ?.focus(),
+                      );
+                    }}
+                    onPreview={(code) => {
+                      setLang(code);
+                      setPreview(true);
+                    }}
+                    poi={saved}
+                    languages={languages}
+                    vi={vi}
+                    disabled={dirty || busy}
+                    onApplied={accept}
+                  />
+                )}
                 <div
                   className="language-tabs"
                   role="tablist"
@@ -767,9 +795,7 @@ export function Editor({
                         updateTranslation("title", e.target.value)
                       }
                       placeholder={
-                        lang === "vi"
-                          ? "Tên địa điểm bằng tiếng Việt"
-                          : languageName(lang)
+                        vi ? "Tên địa điểm bằng tiếng Việt" : languageName(lang)
                       }
                     />
                   </label>
@@ -789,7 +815,7 @@ export function Editor({
                         updateTranslation("text", e.target.value)
                       }
                       placeholder={
-                        lang === "vi"
+                        vi
                           ? "Kể câu chuyện về địa điểm này…"
                           : "Tell the story of this place…"
                       }
@@ -826,8 +852,12 @@ export function Editor({
                   <span>✧</span>
                   <p>
                     {vi
-                      ? "Dịch tự động chưa được cấu hình. Bạn có thể nhập bản dịch thủ công ngay tại đây."
-                      : "Automatic translation is not configured. You can enter translations manually here."}
+                      ? saved.id
+                        ? "Dùng bảng đa ngôn ngữ để bổ sung bằng AI hoặc chỉnh bản dịch thủ công. Mọi kết quả AI cần được kiểm tra trước khi công bố."
+                        : "Lưu địa điểm trước để bổ sung bản dịch bằng AI. Bạn vẫn có thể nhập bản dịch thủ công."
+                      : saved.id
+                        ? "Use the multilingual table to generate or edit translations. Review every AI result before publishing."
+                        : "Save this place before generating AI translations. You can also enter translations manually."}
                   </p>
                 </div>
               </div>
@@ -992,7 +1022,7 @@ export function Editor({
                     </summary>
                     {historyError ? (
                       <div className="notice error" role="alert">
-                        {historyError}
+                        {uiMessage(historyError, vi ? "vi" : "en")}
                       </div>
                     ) : !history ? (
                       <Loading text={t.loading} />
@@ -1118,6 +1148,7 @@ export function Editor({
       </div>
       {preview && (
         <Dialog
+          locale={locale}
           title={vi ? "Bản xem trước · Chưa công khai" : "Preview · Private"}
           onClose={() => setPreview(false)}
         >
@@ -1168,6 +1199,7 @@ export function Editor({
       )}
       {confirm && (
         <Dialog
+          locale={locale}
           title={
             confirm === "reject"
               ? vi
@@ -1206,7 +1238,7 @@ export function Editor({
             )}
             {error && (
               <div className="notice error" role="alert">
-                {error}
+                {uiMessage(error, vi ? "vi" : "en")}
               </div>
             )}
             <div className="dialog-actions">

@@ -38,6 +38,10 @@ def call_server(origin, token, path, payload):
 def process_job(job):
     payload = job["payload"]
     try:
+        if payload.get("kind") == "supplement":
+            from app.narration_generation import generate_translation
+
+            return {"lease": job["lease"], **generate_translation(payload)}
         result = generate_draft(payload["article"]["url"], payload["categories"], payload["languages"],
                                 article=payload["article"])
         return {"lease": job["lease"], **result}
@@ -52,7 +56,7 @@ def run(origin, token, *, once=False):
         while not stopped.is_set():
             try:
                 status = ollama_status()
-                call_server(origin, token, "/heartbeat", {"model": status["model"], "ready": status["ready"]})
+                call_server(origin, token, "/heartbeat", {"model": status["model"], "ready": status["ready"], "protocol": 2})
             except Exception:
                 pass  # Never print exception URLs, response bodies, or credentials.
             stopped.wait(20)
@@ -66,7 +70,7 @@ def run(origin, token, *, once=False):
                 if not ollama_status()["ready"]:
                     print("Ollama/model is not ready. Retrying...", flush=True)
                 else:
-                    job = call_server(origin, token, "/claim", {}).get("job")
+                    job = call_server(origin, token, "/claim", {"protocol": 2}).get("job")
                     if job:
                         print("Generating a place draft...", flush=True)
                         result = process_job(job)

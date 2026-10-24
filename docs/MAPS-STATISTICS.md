@@ -1,6 +1,6 @@
 # Bản đồ, vị trí và thống kê địa điểm
 
-Chạy migration `0008` trước khi khởi động backend mới. Nếu dùng Supabase/cloud, dùng quy trình sao lưu và nâng cấp trong [CLOUD-DEPLOYMENT.md](CLOUD-DEPLOYMENT.md); lệnh dưới đây dành cho database phát triển đã sao lưu:
+Backend mới cần migration `0009`. Nếu dùng Supabase/cloud, dùng quy trình sao lưu và nâng cấp một lần qua release owner trong [DEPLOYMENT-RUNBOOK.md](DEPLOYMENT-RUNBOOK.md); lệnh dưới đây chỉ dành cho database phát triển đã sao lưu, không trỏ tới production:
 
 ```powershell
 cd services/backend
@@ -9,7 +9,7 @@ uv run alembic upgrade head
 
 ## Du khách
 
-Chuyển **Danh sách / Bản đồ** ở danh sách địa điểm. Hai chế độ chỉ nhận địa điểm công bố và sắp xếp `view_count DESC, id ASC`; không có `display_order`. Địa điểm chưa có tọa độ vẫn có trong danh sách. Đổi ngôn ngữ không làm mất địa điểm nếu bản dịch đó chưa có; thẻ bản đồ cho chọn những ngôn ngữ thực sự có thuyết minh.
+Chuyển **Danh sách / Bản đồ** ở danh sách địa điểm. Hai chế độ chỉ nhận snapshot công bố và sắp xếp `view_count DESC, id ASC`; không có `display_order`. Địa điểm thiếu tọa độ vẫn có trong danh sách. Ngôn ngữ giao diện độc lập với ngôn ngữ bài; không tự chọn ngôn ngữ khác khi thiếu bản dịch. GPS và bán kính: [NARRATION-GPS.md](NARRATION-GPS.md).
 
 Chọn ghim mở thẻ ngay trên bản đồ, gồm ảnh, tên, địa chỉ, mô tả ngắn, ngôn ngữ và trình phát giọng đọc trình duyệt hiện có. Nút **Xem chi tiết** mở nội dung đầy đủ. Khi đổi địa điểm, ngôn ngữ hoặc đóng thẻ, bản đang đọc dừng lại. Cần giọng phù hợp trên thiết bị; không tạo tệp audio mới.
 
@@ -19,9 +19,9 @@ Chỉ admin được thêm/sửa địa điểm, ảnh, tọa độ và trạng 
 
 Biểu mẫu có tên, danh mục, địa chỉ bắt buộc, mô tả ngắn và ảnh xem trước. Các tab thuyết minh giữ nguyên danh sách ngôn ngữ của dự án. **Trạng thái hiển thị** gồm Nháp / Công bố / Ẩn; công bố yêu cầu đủ các bản dịch bắt buộc và không có bản dịch nhập dở. Lịch sử và API duyệt nội dung cũ được giữ, chỉ admin thực hiện thay đổi trạng thái.
 
-**Chỉnh sửa nâng cao** mặc định đóng. Mở phần này để tìm theo tên/địa chỉ, chọn kết quả, kéo ghim, nhấp bản đồ hoặc nhập tọa độ. Tọa độ dùng chung các trường `latitude`/`longitude`, không cập nhật địa chỉ văn bản. **Khôi phục vị trí** dùng tọa độ ở lần lưu gần nhất; **Hủy** bỏ các thay đổi chưa lưu. Chuyển bước và chọn ảnh không tự ghi dữ liệu; **Lưu thay đổi** mới gửi dữ liệu. Dự án chưa có GPS tự phát nên không thêm bán kính kích hoạt.
+**Chỉnh sửa nâng cao** mặc định đóng. Tìm theo tên/địa chỉ, chọn kết quả, kéo ghim, nhấp bản đồ hoặc nhập tọa độ vào các trường `latitude`/`longitude` hiện có. Không tự đổi địa chỉ. Thêm bán kính 20–1.000 m và công tắc cho tự phát. **Khôi phục vị trí** lấy lại cả tọa độ/bán kính/công tắc đã lưu; **Hủy** bỏ thay đổi chưa lưu. Chuyển bước/chọn ảnh không tự ghi; **Lưu thay đổi** mới gửi dữ liệu.
 
-Admin thấy hai bộ đếm chỉ đọc trong danh sách và biểu mẫu; có nút xem trước ngay từ danh sách. Nháp/Ẩn không công khai; chuyển trạng thái giữ thống kê, bản dịch, ảnh và lịch sử. Chỉnh nội dung về nháp gỡ khỏi công khai cho tới lần công bố tiếp theo.
+Admin thấy hai bộ đếm chỉ đọc trong danh sách và biểu mẫu; có nút xem trước. Nội dung nháp/ẩn không công khai. Khi đã có snapshot công khai, sửa nháp giữ nguyên snapshot cũ; Ẩn gỡ khỏi công khai. Thống kê, bản dịch, ảnh và lịch sử được giữ.
 
 ## Quy tắc đếm và API
 
