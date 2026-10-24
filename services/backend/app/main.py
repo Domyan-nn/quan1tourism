@@ -29,6 +29,7 @@ from .ai_jobs import prepare_import, queue_status, router as ai_router, worker_m
 from .duplicates import ensure_unique, find_duplicates, reserve_identities
 
 from .narration_jobs import router as narration_router
+from .media_storage import local_path, parse_reference, read_remote_image, remove_new_image, store_image
 
 app = FastAPI(title="Saigon Stories API", version="0.1.0")
 app.include_router(ai_router)
@@ -548,8 +549,7 @@ async def upload(
         raise HTTPException(422, "Định dạng bên trong tệp không khớp loại tệp đã gửi.")
     media_id = uid()
     filename = f"{media_id}.{ext}"
-    path = MEDIA_ROOT / filename
-    path.write_bytes(raw)
+    filename = store_image(MEDIA_ROOT, filename, raw, mime)
     media = Media(
         id=media_id,
         poi_id=poi.id,
@@ -560,17 +560,25 @@ async def upload(
         size=len(raw),
         checksum=digest_bytes(raw),
     )
-    db.add(media)
-    db.flush()
-    poi.image_id = media_id
-    poi.status = "draft"
-    touch(poi)
-    audit(db, user, poi, "upload", "image")
+    commit_started = False
     try:
+        db.add(media)
+        db.flush()
+        poi.image_id = media_id
+        poi.status = "draft"
+        touch(poi)
+        audit(db, user, poi, "upload", "image")
+        commit_started = True
         db.commit()
     except Exception:
         db.rollback()
-        path.unlink(missing_ok=True)
+        if not commit_started:
+            try:
+                remove_new_image(MEDIA_ROOT, filename)
+            except (HTTPException, OSError):
+                pass  # Keep an orphan rather than masking the database failure.
+        # A lost COMMIT acknowledgement may mean the row was committed. Never
+        # delete a possibly referenced object; orphan cleanup can be reviewed later.
         raise
     return serialize(poi, db, statistics=True)
 
@@ -587,13 +595,17 @@ def media_file(media_id: str, request: Request, db: DbSession = Depends(get_db))
     user = optional_user(request, db)
     if not media or (not media.is_public and (not user or user.role == "visitor")):
         raise HTTPException(404, "Không tìm thấy tệp.")
-    path = MEDIA_ROOT / media.filename
+    headers = {"Cache-Control": "private, no-store" if not media.is_public else "public, max-age=3600"}
+    if parse_reference(media.filename):
+        raw = read_remote_image(media.filename, media.size, media.checksum)
+        return Response(raw, media_type=media.mime, headers=headers)
+    path = local_path(MEDIA_ROOT, media.filename)
     if not path.is_file():
         raise HTTPException(404, "Tệp hiện không có sẵn.")
     return FileResponse(
         path,
         media_type=media.mime,
-        headers={"Cache-Control": "private, no-store" if not media.is_public else "public, max-age=3600"},
+        headers=headers,
     )
 
 

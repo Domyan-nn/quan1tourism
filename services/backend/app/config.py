@@ -23,6 +23,8 @@ def load_local_environment():
                 "APP_ENV", "AI_MODE", "AI_WORKER_TOKEN", "AI_SERVER_URL", "STATIC_ROOT", "GEOCODING_URL",
                 "AI_TRANSLATION_BATCH_LIMIT", "AI_TRANSLATION_VERIFIED_LOCALES", "AI_TRANSLATION_ENABLED",
                 "AI_TRANSLATION_PENDING_LIMIT", "AI_GENERATION_TIMEOUT_SECONDS",
+                "MEDIA_STORAGE_DRIVER", "SUPABASE_URL", "SUPABASE_STORAGE_BUCKET",
+                "SUPABASE_SECRET_KEY", "SUPABASE_SERVICE_ROLE_KEY",
             }:
                 if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
                     value = value[1:-1]

@@ -4,6 +4,8 @@ Danh mục song ngữ Việt/Anh và migration `0010`: [mapping, kiểm thử v�
 
 Sửa độ tin cậy luồng dịch AI: [nguyên nhân, kiểm thử, audit và hướng dẫn vận hành](docs/AI-TRANSLATION-RELIABILITY.md). Bản vá đã được kiểm thử local; `qwen3:4b` chưa vượt pilot dịch, batch mặc định một ngôn ngữ.
 
+Ảnh upload bền vững và nối lại file đang có trong bucket private: [Supabase Media](docs/SUPABASE-MEDIA.md).
+
 Trang quản trị nội dung thuyết minh du lịch bằng **React + TypeScript**, kết nối **FastAPI + SQLAlchemy + Alembic**. Tiếng Việt mặc định, có giao diện tiếng Anh và cỡ chữ lớn. Có bản đồ du khách và thống kê lượt xem/lượt nghe. GPS foreground, bán kính theo địa điểm, UI VI/EN độc lập với ngôn ngữ bài và bổ sung bản dịch qua Ollama queue: [hướng dẫn](docs/NARRATION-GPS.md), [kiểm thử](docs/NARRATION-VERIFICATION.md). Các thay đổi mới chưa triển khai cloud.
 
 ## Chạy local

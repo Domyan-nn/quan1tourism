@@ -19,6 +19,14 @@ services:
         value: worker
       - key: MEDIA_ROOT
         value: /var/data/media
+      - key: MEDIA_STORAGE_DRIVER
+        value: supabase
+      - key: SUPABASE_STORAGE_BUCKET
+        value: place-images
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
       - key: DATABASE_URL
         sync: false
       - key: AI_WORKER_TOKEN

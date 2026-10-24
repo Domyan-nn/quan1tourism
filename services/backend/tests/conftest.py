@@ -7,6 +7,7 @@ from pathlib import Path
 os.environ["DATABASE_URL"] = "sqlite://"
 os.environ["QUAN1_IGNORE_LOCAL_ENV"] = "1"
 os.environ["APP_ENV"] = "test"
+os.environ["MEDIA_STORAGE_DRIVER"] = "local"
 os.environ["COOKIE_SECURE"] = "false"
 os.environ.pop("RENDER", None)
 os.environ.pop("STATIC_ROOT", None)

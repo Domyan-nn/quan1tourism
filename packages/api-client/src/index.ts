@@ -131,6 +131,30 @@ export async function api<T>(
   return response.json() as Promise<T>;
 }
 function localizedError(status: number, detail: unknown, vi: boolean) {
+  const mediaErrors: Record<string, [string, string]> = {
+    media_storage_not_configured: [
+      "Máy chủ chưa cấu hình Supabase Storage. Ảnh chưa được lưu; kiểm tra cấu hình backend.",
+      "Supabase Storage is not configured on the server. The image was not saved; check backend settings.",
+    ],
+    media_storage_unavailable: [
+      "Chưa kết nối được kho ảnh. Hãy thử lại; ảnh hiện có được giữ nguyên.",
+      "Image storage is unavailable. Try again; the existing image was preserved.",
+    ],
+    media_integrity_failed: [
+      "File trong kho ảnh không khớp dữ liệu đã lưu. Cần kiểm tra lại ảnh.",
+      "The stored image does not match its saved metadata. Review the image.",
+    ],
+    media_file_not_found: [
+      "Không tìm thấy file ảnh.",
+      "The image file was not found.",
+    ],
+    invalid_media_path: [
+      "Đường dẫn kho ảnh không hợp lệ.",
+      "The image storage path is invalid.",
+    ],
+  };
+  if (typeof detail === "string" && mediaErrors[detail])
+    return mediaErrors[detail][vi ? 0 : 1];
   if (typeof detail === "string" && aiIssueMessage(detail, vi ? "vi" : "en"))
     return aiIssueMessage(detail, vi ? "vi" : "en");
   if (
