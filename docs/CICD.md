@@ -39,7 +39,11 @@ failed/cancelled/skipped đều chặn. Không có `continue-on-error`. Không c
 Không dùng `pull_request_target`. CI không nhận deploy secret.
 
 CI chạy Ubuntu, Node 22, Python 3.12, uv 0.13.4; `npm ci`, `uv sync --frozen`.
-Lockfile npm được giữ nguyên; uv.lock nâng Pillow lên 13.0.0 để sửa advisory phát hiện khi audit.
+`package.json` override Undici ở `7.30.1`, đồng bộ `package-lock.json`, để vá
+GHSA-4qv8-2p9j-2685, GHSA-f72v-6w45-q472 và GHSA-xjj6-f33q-929c trong dependency
+của Miniflare. Giữ Wrangler 4.152.0; không dùng `npm audit fix --force` để hạ Wrangler.
+Khi nâng Wrangler/Miniflare, kiểm tra lại override và chỉ bỏ khi dependency upstream đã có bản vá.
+uv.lock nâng Pillow lên 13.0.0 để sửa advisory phát hiện khi audit.
 Playwright cài Chromium bằng `npx playwright install --with-deps chromium`; không phụ thuộc Edge.
 Playwright phục vụ `apps/web/dist` và `/admin/`, không dùng Vite dev server. HTTP ngoài loopback,
 tile, ảnh và TTS được mock; backend tests cấm socket HTTP ngoài loopback.
@@ -49,6 +53,9 @@ Unicode danh mục và duyệt supplement AI. Không cần model thật. Xem [NA
 
 Cloud được đối chiếu READ ONLY ngày 2026-10-23: **17.11**, revision **0008**. CI matrix major **17** và **18**;
 local đã chạy **18.6**, chưa chạy major 17 ở máy này vì không có binaries/container tương ứng.
+GitHub Actions [run 40053038928](https://github.com/Domyan-nn/quan1tourism/actions/runs/40053038928)
+trên commit `a5aa5b0618a92388ae1a878502c85ac683f7cff9` đã chạy thành công cả PostgreSQL
+17/18, Docker và Built artifact E2E; run này bị chặn tại Security do Undici trước bản vá trên.
 Owner xác minh lại version/extension trước khi bật CD; chưa kiểm tra PostGIS. CI không dùng DATABASE_URL cloud. `--postgres` chỉ chấp nhận
 `TEST_POSTGRES_URL` loopback, database `quan1_ci`, mỗi test có schema UUID và cleanup riêng.
 Test từ base/0007/0008 lên head 0009, chạy lặp, so dữ liệu accounts/sessions/POI/bản dịch/media/release/audit/
