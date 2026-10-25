@@ -33,6 +33,8 @@ jobs:
     env:
       RELEASE_SHA: ${{ github.sha }}
       WRANGLER_SEND_METRICS: 'false'
+      VITE_EXPO_QR_ENABLED: ${{ vars.VITE_EXPO_QR_ENABLED || 'false' }}
+      VITE_EXPO_GO_URL: ${{ vars.VITE_EXPO_GO_URL }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
