@@ -13,7 +13,7 @@ export default defineConfig({
   workers: 1,
   timeout: 60000,
   expect: { timeout: 10000 },
-  reporter: [["list"], ["html", { open: "never" }]],
+  reporter: [["list"], ["html", { open: "never" }], ...(process.env.CI ? [["github"]] : [])],
   use: {
     baseURL: "http://127.0.0.1:5183",
     trace: "retain-on-failure",

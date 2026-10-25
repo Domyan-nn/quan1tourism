@@ -61,10 +61,13 @@ Chi tiết cấu hình/tắt QR và backend: [MOBILE-EXPO.md](MOBILE-EXPO.md), [
   Sau khi sửa selector, chạy lại desktop/mobile: **2/2** đạt. Không có lỗi chức năng còn lại trong 70 ca.
 - Suite riêng QR trên React 19.3: **8/8** đạt, gồm desktop, mobile, VI/EN và sao chép liên kết.
 
-`npm audit --audit-level=high` vẫn báo 7 mục (5 high, 2 moderate), như trước lần nâng:
+Tại thời điểm nâng SDK, `npm audit --audit-level=high` báo 7 mục (5 high, 2 moderate), như trước lần nâng:
 chuỗi công cụ Expo CLI phụ thuộc node-forge/Zod, và ngrok phụ thuộc uuid cũ.
 Giữ nguyên security gate trong CI, không thêm ngoại lệ hoặc chạy `audit fix --force` hạ Expo về SDK 44.
 Không tuyên bố toàn bộ CI đã đạt chỉ từ Expo Doctor/typecheck.
+
+Bản sửa CI sau đó đã nâng Zod/UUID và sửa selector nút đóng editor;
+xem [lỗi CI và trạng thái Security còn lại](CI-FAILURES-2026-10-25.md).
 
 Chưa có điện thoại thật để xác nhận GPS, TTS, phiên đăng nhập hoặc quét bằng thiết bị.
 Bundle/manifest qua tunnel không thay thế nghiệm thu Android/iOS thật. Docker CLI chưa có trên máy;

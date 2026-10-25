@@ -464,6 +464,8 @@ test("admin supplements an existing place through worker protocol 3 and reviews 
         ).translations.fr.text,
     )
     .toBe(french);
+  // Persistence can finish before the apply response updates the review panel.
+  await expect(region.locator(".ai-review")).toBeHidden();
   const publicPoi = await (
     await page.request.get(`/api/v1/pois/${saved.id}?track_view=false`)
   ).json();
@@ -471,7 +473,8 @@ test("admin supplements an existing place through worker protocol 3 and reviews 
   expect(publicPoi.translations.en.text).toBe(
     "Existing English narration must stay.",
   );
-  await page.getByRole("button", { name: "Hủy", exact: true }).click();
+  // Close the editor; the translation review has its own cancel action.
+  await page.locator(".editor-footer").getByRole("button", { name: "Hủy", exact: true }).click();
   await page.getByRole("button", { name, exact: true }).click();
   await page
     .getByRole("button", { name: "Bước 2: Nội dung đa ngôn ngữ", exact: true })
