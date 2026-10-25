@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   ArrowDownWideNarrow,
   ArrowRight,
@@ -44,6 +44,7 @@ import { Badge, Brand, Cover, Dialog, Empty, Loading } from "./components";
 import { messages, type UiLocale } from "./i18n";
 import { Editor } from "./Editor";
 import { LanguageManager } from "./Languages";
+import { editorId, useAdminRoute } from "./useAdminRoute";
 
 type View = "overview" | "places" | "categories" | "languages" | "review";
 const views: View[] = [
@@ -68,8 +69,24 @@ const emptySummary: Summary = {
   tts_ready: 0,
   translations_ready: 0,
 };
+function listContext() {
+  try {
+    return JSON.parse(sessionStorage.getItem("quan1-place-list") || "{}");
+  } catch {
+    return {};
+  }
+}
 
 export function App() {
+  const previousList = useRef(listContext());
+  const route = useAdminRoute();
+  const routeId = editorId(route.hash);
+  const [editorLoading, setEditorLoading] = useState(false);
+  const [editorError, setEditorError] = useState("");
+  const [editorRetry, setEditorRetry] = useState(0);
+  const [editorKey, setEditorKey] = useState(0);
+  const listScroll = useRef<number>(previousList.current.scroll ?? 0);
+  const restoreScroll = useRef(true);
   const [user, setUser] = useState<User | null>(null);
   const [checking, setChecking] = useState(true);
   const [locale, setLocale] = useState<UiLocale>(() =>
@@ -81,7 +98,9 @@ export function App() {
   const [view, setView] = useState<View>(() =>
     views.includes(location.hash.slice(1) as View)
       ? (location.hash.slice(1) as View)
-      : "places",
+      : views.includes(previousList.current.view)
+        ? previousList.current.view
+        : "places",
   );
   const [menu, setMenu] = useState(false);
   const [help, setHelp] = useState(false);
@@ -92,6 +111,7 @@ export function App() {
   );
   const [summary, setSummary] = useState(emptySummary);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [catalogsLoaded, setCatalogsLoaded] = useState(false);
   const [languages, setLanguages] = useState<Language[]>([]);
   const enabledLanguages = languages.filter((language) => language.enabled);
   const languageCodes = enabledLanguages.map((language) => language.code);
@@ -101,16 +121,28 @@ export function App() {
     page: 1,
     page_size: 8,
   });
-  const [query, setQuery] = useState("");
-  const [debounced, setDebounced] = useState("");
-  const [status, setStatus] = useState("");
-  const [category, setCategory] = useState("");
-  const [sort, setSort] = useState("views");
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(() =>
-    matchMedia("(max-width: 760px)").matches ? 4 : 8,
+  const [query, setQuery] = useState<string>(previousList.current.query ?? "");
+  const [debounced, setDebounced] = useState<string>(
+    previousList.current.query ?? "",
   );
-  const [layout, setLayout] = useState<"list" | "grid">("list");
+  const [status, setStatus] = useState<string>(
+    previousList.current.status ?? "",
+  );
+  const [category, setCategory] = useState<string>(
+    previousList.current.category ?? "",
+  );
+  const [sort, setSort] = useState<string>(
+    previousList.current.sort ?? "views",
+  );
+  const [page, setPage] = useState<number>(previousList.current.page ?? 1);
+  const [pageSize, setPageSize] = useState(
+    () =>
+      previousList.current.pageSize ??
+      (matchMedia("(max-width: 760px)").matches ? 4 : 8),
+  );
+  const [layout, setLayout] = useState<"list" | "grid">(
+    previousList.current.layout === "grid" ? "grid" : "list",
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [authError, setAuthError] = useState("");
@@ -182,18 +214,91 @@ export function App() {
   }, [toast]);
   useEffect(() => {
     const onHash = () => {
-      const v = location.hash.slice(1);
+      const v = route.hash.slice(1);
       if (views.includes(v as View)) {
         setView(v as View);
-        setPage(1);
       }
     };
-    window.addEventListener("hashchange", onHash);
-    return () => window.removeEventListener("hashchange", onHash);
-  }, []);
+    onHash();
+  }, [route.hash]);
   useEffect(() => {
-    document.title = `${t[view]} · Saigon Stories`;
-  }, [view, t]);
+    if (!user || !routeId) {
+      setEditing(null);
+      return;
+    }
+    if (routeId === "new") {
+      setEditorLoading(false);
+      setEditing("new");
+      setEditorKey((n) => n + 1);
+      setEditorError("");
+      return;
+    }
+    if (editing !== "new" && editing?.id === routeId) return;
+    const controller = new AbortController();
+    setEditing(null);
+    setEditorLoading(true);
+    setEditorError("");
+    api<Poi>(`/admin/pois/${encodeURIComponent(routeId)}`, {
+      signal: controller.signal,
+    })
+      .then((poi) => {
+        if (!controller.signal.aborted) {
+          setEditing(poi);
+          setEditorKey((n) => n + 1);
+        }
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted) setEditorError(error.message);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setEditorLoading(false);
+      });
+    return () => controller.abort();
+  }, [routeId, user, editorRetry]);
+  useEffect(() => {
+    if (!routeId && !loading && restoreScroll.current) {
+      requestAnimationFrame(() => {
+        window.scrollTo(0, listScroll.current);
+        restoreScroll.current = false;
+      });
+    }
+  }, [routeId, loading]);
+  useEffect(() => {
+    if (routeId) {
+      restoreScroll.current = true;
+      window.scrollTo(0, 0);
+    }
+  }, [routeId]);
+  useEffect(() => {
+    const remember = () => {
+      if (!routeId && !restoreScroll.current)
+        listScroll.current = window.scrollY;
+      try {
+        sessionStorage.setItem(
+          "quan1-place-list",
+          JSON.stringify({
+            view,
+            query,
+            status,
+            category,
+            sort,
+            page,
+            pageSize,
+            layout,
+            scroll: listScroll.current,
+          }),
+        );
+      } catch {
+        /* The form does not depend on browser storage. */
+      }
+    };
+    remember();
+    window.addEventListener("scroll", remember, { passive: true });
+    return () => window.removeEventListener("scroll", remember);
+  }, [routeId, view, query, status, category, sort, page, pageSize, layout]);
+  useEffect(() => {
+    document.title = `${routeId ? (editing && editing !== "new" ? editing.name : t.add) : t[view]} · Saigon Stories`;
+  }, [view, t, routeId, editing]);
   useEffect(() => {
     if (!user) return;
     let ignore = false;
@@ -219,6 +324,7 @@ export function App() {
           setSummary(stats);
           setCategories(cats);
           setLanguages(langs);
+          setCatalogsLoaded(true);
         }
       })
       .catch((e) => {
@@ -236,13 +342,33 @@ export function App() {
   }, [user, debounced, status, category, sort, page, pageSize, refresh, view]);
 
   function navigate(v: View) {
+    if (!route.go(`#${v}`)) return;
     setView(v);
-    location.hash = v;
     setPage(1);
     setStatus("");
     setCategory("");
     setQuery("");
     setMenu(false);
+  }
+  function openEditor(poi: Poi | "new", preview = false) {
+    listScroll.current = window.scrollY;
+    restoreScroll.current = true;
+    if (
+      route.go(`#places/${poi === "new" ? "new" : encodeURIComponent(poi.id)}`)
+    ) {
+      setPreviewing(preview);
+    }
+  }
+  function closeEditor() {
+    route.go(`#${view}`, false, true);
+    setEditing(null);
+    setPreviewing(false);
+    setRefresh((n) => n + 1);
+  }
+  function persisted(poi: Poi) {
+    setEditing(poi);
+    if (routeId === "new")
+      route.go(`#places/${encodeURIComponent(poi.id)}`, true, true);
   }
   function notify(message: string) {
     setToast(message);
@@ -255,6 +381,7 @@ export function App() {
     setPage(1);
   }
   async function logout() {
+    if (!route.guard.current()) return;
     try {
       await api("/auth/logout", { method: "POST" });
       setMenu(false);
@@ -381,7 +508,14 @@ export function App() {
     );
   return (
     <div className="app-shell">
-      <a className="skip-link" href="#main-content">
+      <a
+        className="skip-link"
+        href="#main-content"
+        onClick={(event) => {
+          event.preventDefault();
+          document.getElementById("main-content")?.focus();
+        }}
+      >
         {t.goTo}
       </a>
       {menu && (
@@ -524,750 +658,810 @@ export function App() {
           </div>
         </header>
         <main id="main-content" tabIndex={-1}>
-          {!online && (
-            <div className="notice warning" role="status">
-              {t.offline}
-            </div>
-          )}
-          <div className="page-heading">
-            <div>
-              <div className="eyebrow">
-                <span />
-                {t.district}
-              </div>
-              <h1>{title}</h1>
-              <p>{subtitle}</p>
-            </div>
-            {view !== "categories" && user.role === "admin" && (
-              <button
-                className="button primary"
-                onClick={() => setEditing("new")}
-              >
-                <Plus size={19} />
-                {t.add}
-              </button>
-            )}
-            {view === "categories" && (
-              <button
-                className="button primary"
-                onClick={() => {
-                  setCategoryError("");
-                  setCategoryEditing(null);
-                  setCategoryName("");
-                  setCategoryNameVi("");
-                  setCategoryDialog(true);
-                }}
-              >
-                <Plus size={18} />
-                {t.addCategory}
-              </button>
-            )}
-          </div>
-          {(view === "places" || view === "overview") && (
-            <div className="stats">
-              {stats.map(({ label, value, icon: Icon, color, caption }) => (
-                <div className="stat-card" key={label}>
-                  <div className="stat-top">
-                    <span>{label}</span>
-                    <div className={`stat-icon ${color}`}>
-                      <Icon size={18} />
-                    </div>
-                  </div>
-                  <strong>
-                    {loading ? "—" : value.toString().padStart(2, "0")}
-                  </strong>
-                  <small>{caption}</small>
-                </div>
-              ))}
-            </div>
-          )}
-          {error && (
-            <div className="notice error" role="alert">
-              <span>{uiMessage(error, locale)}</span>
-              <button
-                className="button small"
-                onClick={() => setRefresh((x) => x + 1)}
-              >
-                {t.retry}
-              </button>
-            </div>
-          )}
-          {view === "overview" && (
-            <div className="overview-layout">
-              <section className="panel task-panel">
-                <div className="panel-heading">
-                  <div>
-                    <span className="eyebrow">WORKSPACE</span>
-                    <h2>{t.attention}</h2>
-                  </div>
-                  <Sparkles size={21} />
-                </div>
-                {[
-                  {
-                    n: summary.total - summary.translations_ready,
-                    text: t.translateTask,
-                    icon: BookOpen,
-                    v: "languages" as View,
-                  },
-                  {
-                    n: summary.total - summary.tts_ready,
-                    text: t.audioTask,
-                    icon: Headphones,
-                    v: "languages" as View,
-                  },
-                  {
-                    n: summary.in_review,
-                    text: t.reviewTask,
-                    icon: FileCheck2,
-                    v: "review" as View,
-                  },
-                ].map(({ n, text, icon: Icon, v }) => (
-                  <button
-                    className="task"
-                    key={text}
-                    onClick={() => navigate(v)}
-                  >
-                    <span className="task-icon">
-                      <Icon size={19} />
-                    </span>
-                    <span>
-                      <strong>
-                        {n} {text}
-                      </strong>
-                      <small>
-                        {locale === "vi"
-                          ? "Xem và tiếp tục hoàn thiện nội dung"
-                          : "Review and complete your content"}
-                      </small>
-                    </span>
-                    <ArrowRight size={17} />
-                  </button>
-                ))}
-              </section>
-              <section className="panel recent-panel">
-                <div className="panel-heading">
-                  <h2>{t.recent}</h2>
-                  <button
-                    className="text-button"
-                    onClick={() => navigate("places")}
-                  >
-                    {t.all}
-                    <ArrowRight size={15} />
-                  </button>
-                </div>
-                {loading ? (
-                  <Loading text={t.loading} />
-                ) : (
-                  data.items.slice(0, 4).map((p) => (
-                    <button
-                      className="recent-place"
-                      onClick={() => setEditing(p)}
-                      key={p.id}
-                    >
-                      <Cover poi={p} />
-                      <div>
-                        <strong>{p.name}</strong>
-                        <small>
-                          {getCategoryLabel(categoryFor(p.category_id), locale)}
-                        </small>
-                      </div>
-                      <Badge status={p.status} t={t} />
-                    </button>
-                  ))
-                )}
-              </section>
-            </div>
-          )}
-          {view === "languages" && (
-            <LanguageManager
-              languages={languages}
-              locale={locale}
-              canEdit={user.role === "admin"}
-              onSaved={notify}
-            />
-          )}
-          {(view === "places" || view === "review" || view === "languages") && (
-            <section className="panel places-panel" aria-label={t[view]}>
-              {view === "places" && (
-                <div className="filter-tabs" role="group" aria-label={t.status}>
-                  {[
-                    { id: "", label: t.all, count: summary.total },
-                    { id: "published", label: t.published },
-                    { id: "draft", label: t.draft },
-                    { id: "in_review", label: t.waiting },
-                    { id: "approved", label: t.approved },
-                    { id: "archived", label: t.archived },
-                  ].map((tab) => (
-                    <button
-                      key={tab.id}
-                      className={status === tab.id ? "selected" : ""}
-                      onClick={() => {
-                        setStatus(tab.id);
-                        setPage(1);
-                      }}
-                      aria-pressed={status === tab.id}
-                    >
-                      {tab.label}
-                      {tab.count !== undefined && (
-                        <span>{loading ? "–" : tab.count}</span>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
-              <div className="toolbar">
-                <label className="search-field">
-                  <Search size={18} />
-                  <input
-                    value={query}
-                    onChange={(e) => {
-                      setQuery(e.target.value);
-                      setPage(1);
-                    }}
-                    placeholder={t.search}
-                    aria-label={t.search}
-                  />
-                  {query && (
-                    <button onClick={() => setQuery("")} aria-label={t.clear}>
-                      <X size={16} />
-                    </button>
-                  )}
-                </label>
-                <div className="toolbar-right">
-                  <label className="select-wrap">
-                    <Tags size={16} />
-                    <select
-                      value={category}
-                      onChange={(e) => {
-                        setCategory(e.target.value);
-                        setPage(1);
-                      }}
-                      aria-label={t.category}
-                    >
-                      <option value="">{t.allCategories}</option>
-                      {categories.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {getCategoryLabel(c, locale)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="select-wrap sort-select">
-                    <ArrowDownWideNarrow size={16} />
-                    <select
-                      value={sort}
-                      onChange={(e) => {
-                        setSort(e.target.value);
-                        setPage(1);
-                      }}
-                      aria-label={
-                        locale === "vi" ? "Sắp xếp địa điểm" : "Sort places"
-                      }
-                    >
-                      <option value="views">
-                        {locale === "vi" ? "Lượt xem giảm dần" : "Most viewed"}
-                      </option>
-                      <option value="updated">{t.updated}</option>
-                      <option value="name">{t.nameSort}</option>
-                    </select>
-                  </label>
-                  {view === "places" && (
-                    <div className="view-toggle">
-                      <button
-                        className={layout === "list" ? "active" : ""}
-                        aria-label={t.listView}
-                        aria-pressed={layout === "list"}
-                        onClick={() => setLayout("list")}
-                      >
-                        <List size={18} />
-                      </button>
-                      <button
-                        className={layout === "grid" ? "active" : ""}
-                        aria-label={t.gridView}
-                        aria-pressed={layout === "grid"}
-                        onClick={() => setLayout("grid")}
-                      >
-                        <Grid2X2 size={17} />
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-              {loading ? (
-                <div
-                  className="skeleton-list"
-                  aria-label={t.loading}
-                  role="status"
-                >
-                  {[1, 2, 3, 4, 5].map((n) => (
-                    <div key={n}>
-                      <span />
-                      <i />
-                      <i />
-                      <i />
-                    </div>
-                  ))}
-                </div>
-              ) : data.items.length === 0 ? (
-                <Empty
-                  title={
-                    view === "review" && !query && !category
-                      ? t.emptyReview
-                      : t.noResults
-                  }
-                  description={
-                    view === "review" && !query && !category
-                      ? t.emptyReviewDesc
-                      : t.noResultsDesc
-                  }
-                >
-                  {(query || status || category) && (
-                    <button className="button secondary" onClick={clearFilters}>
-                      {t.clear}
-                    </button>
-                  )}
-                </Empty>
-              ) : view === "languages" ? (
-                <div className="table-scroll">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>{t.name}</th>
-                        {enabledLanguages.map((language) => (
-                          <th key={language.code}>{language.native_name}</th>
-                        ))}
-                        <th>{t.actions}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.items.map((p) => (
-                        <tr key={p.id}>
-                          <td>
-                            <div className="place-cell">
-                              <Cover poi={p} />
-                              <div>
-                                <button
-                                  className="place-name"
-                                  onClick={() => setEditing(p)}
-                                >
-                                  {p.name}
-                                </button>
-                                <small>
-                                  {getCategoryLabel(
-                                    categoryFor(p.category_id),
-                                    locale,
-                                  )}
-                                </small>
-                              </div>
-                            </div>
-                          </td>
-                          {languageCodes.map((lang) => (
-                            <td key={lang}>
-                              <div className="translation-cell">
-                                <span
-                                  className={
-                                    p.translations[lang]?.text
-                                      ? "ready"
-                                      : "missing"
-                                  }
-                                >
-                                  <BookOpen size={14} />
-                                  {p.translations[lang]?.text
-                                    ? t.complete
-                                    : t.missing}
-                                </span>
-                                <span
-                                  className={
-                                    p.translations[lang]?.tts_ready
-                                      ? "ready"
-                                      : "missing"
-                                  }
-                                >
-                                  <Volume2 size={14} />
-                                  {p.translations[lang]?.tts_ready
-                                    ? t.validAudio
-                                    : t.needAudio}
-                                </span>
-                              </div>
-                            </td>
-                          ))}
-                          <td>
-                            <button
-                              className="row-edit"
-                              onClick={() => setEditing(p)}
-                            >
-                              {t.edit}
-                              <ArrowUpRight size={14} />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (layout === "grid" || narrow) &&
-                (view === "places" || view === "review") ? (
-                <div className="place-grid">
-                  {data.items.map((p) => (
-                    <article className="place-card" key={p.id}>
-                      <button
-                        className="cover-button"
-                        onClick={() => setEditing(p)}
-                        aria-label={`${t.edit}: ${p.name}`}
-                      >
-                        <Cover poi={p} large />
-                      </button>
-                      <div className="place-card-content">
-                        <Badge status={p.status} t={t} />
-                        {user.role === "admin" && (
-                          <p className="card-statistics">
-                            {locale === "vi" ? "Lượt xem" : "Views"}:{" "}
-                            {p.view_count ?? 0} ·{" "}
-                            {locale === "vi" ? "Lượt nghe" : "Listening starts"}
-                            : {p.listen_count ?? 0}
-                          </p>
-                        )}
-                        <h3>
-                          <button onClick={() => setEditing(p)}>
-                            {p.name}
-                          </button>
-                        </h3>
-                        <p>
-                          <MapPin size={13} />
-                          {p.address}
-                        </p>
-                        <div className="card-bottom">
-                          <span>
-                            {getCategoryLabel(
-                              categoryFor(p.category_id),
-                              locale,
-                            )}
-                          </span>
-                          <span className="language-chips">
-                            {languageCodes
-                              .filter((code) => p.translations[code]?.tts_ready)
-                              .map((code) => code.toUpperCase())
-                              .join(" · ")}
-                          </span>
-                        </div>
-                        <button
-                          className="button secondary small"
-                          onClick={() => {
-                            setPreviewing(true);
-                            setEditing(p);
-                          }}
-                        >
-                          <Eye size={14} />
-                          {locale === "vi" ? "Xem trước" : "Preview"}
-                        </button>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              ) : (
-                <div className="table-scroll">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>{t.name}</th>
-                        <th>{t.category}</th>
-                        <th>{t.language}</th>
-                        <th>{t.audio}</th>
-                        <th>{t.status}</th>
-                        {user.role === "admin" && (
-                          <>
-                            <th>{locale === "vi" ? "Lượt xem" : "Views"}</th>
-                            <th>
-                              {locale === "vi"
-                                ? "Lượt nghe"
-                                : "Listening starts"}
-                            </th>
-                          </>
-                        )}
-                        <th>{t.updatedAt}</th>
-                        <th className="sr-only">{t.actions}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.items.map((p) => {
-                        const c = categoryFor(p.category_id);
-                        const audio = languageCodes.filter(
-                          (code) => p.translations[code]?.tts_ready,
-                        ).length;
-                        return (
-                          <tr key={p.id}>
-                            <td>
-                              <div className="place-cell">
-                                <Cover poi={p} />
-                                <div>
-                                  <button
-                                    className="place-name"
-                                    onClick={() => setEditing(p)}
-                                  >
-                                    {p.name}
-                                  </button>
-                                  <small>
-                                    <MapPin size={11} />
-                                    {p.address.split(",")[0]}
-                                  </small>
-                                </div>
-                              </div>
-                            </td>
-                            <td>
-                              <span className={`category-pill ${c?.color}`}>
-                                {getCategoryLabel(c, locale) || "—"}
-                              </span>
-                            </td>
-                            <td>
-                              <div className="language-chips">
-                                {enabledLanguages
-                                  .filter(
-                                    (language) =>
-                                      language.required ||
-                                      p.translations[language.code]?.tts_ready,
-                                  )
-                                  .map(({ code: l }) => (
-                                    <span
-                                      key={l}
-                                      className={
-                                        p.translations[l]?.text
-                                          ? "available"
-                                          : "unavailable"
-                                      }
-                                      title={
-                                        p.translations[l]?.text
-                                          ? t.complete
-                                          : t.missing
-                                      }
-                                    >
-                                      {l.toUpperCase()}
-                                      {p.translations[l]?.text && (
-                                        <Check size={10} />
-                                      )}
-                                    </span>
-                                  ))}
-                              </div>
-                            </td>
-                            <td>
-                              <span
-                                className={`audio-count ${enabledLanguages.filter((language) => language.required).every((language) => p.translations[language.code]?.tts_ready) ? "ready" : ""}`}
-                                title={`${audio}/${languageCodes.length} ${t.validAudio}`}
-                              >
-                                <Headphones size={15} />
-                                {audio}/{languageCodes.length}
-                              </span>
-                            </td>
-                            <td>
-                              <Badge status={p.status} t={t} />
-                              {p.has_published && p.status !== "published" && (
-                                <small className="live-note">
-                                  {locale === "vi"
-                                    ? "Có bản đang phát hành"
-                                    : "Live version available"}
-                                </small>
-                              )}
-                            </td>
-                            {user.role === "admin" && (
-                              <>
-                                <td>{p.view_count ?? 0}</td>
-                                <td>{p.listen_count ?? 0}</td>
-                              </>
-                            )}
-                            <td>
-                              <span className="date-cell">
-                                {new Intl.DateTimeFormat(
-                                  locale === "vi" ? "vi-VN" : "en-GB",
-                                  {
-                                    day: "2-digit",
-                                    month: "2-digit",
-                                    year: "numeric",
-                                    timeZone: "Asia/Bangkok",
-                                  },
-                                ).format(new Date(p.updated_at))}
-                              </span>
-                            </td>
-                            <td>
-                              <button
-                                className="row-edit"
-                                onClick={() => {
-                                  setPreviewing(true);
-                                  setEditing(p);
-                                }}
-                                aria-label={`${locale === "vi" ? "Xem trước" : "Preview"}: ${p.name}`}
-                              >
-                                <Eye size={17} />
-                              </button>
-                              <button
-                                className="row-edit"
-                                onClick={() => setEditing(p)}
-                                aria-label={`${t.edit}: ${p.name}`}
-                                title={t.edit}
-                              >
-                                <ArrowUpRight size={17} />
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-              {view !== "languages" && (
-                <div className="pagination">
-                  <span>
-                    {data.total > 0
-                      ? `${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, data.total)}`
-                      : "0"}{" "}
-                    <span className="muted">
-                      / {data.total} {t.results}
-                    </span>
-                  </span>
-                  <div>
-                    <label className="per-page">
-                      <select
-                        value={pageSize}
-                        onChange={(e) => {
-                          setPageSize(Number(e.target.value));
-                          setPage(1);
-                        }}
-                        aria-label={t.perPage}
-                      >
-                        {[4, 8, 16, 32].map((n) => (
-                          <option key={n} value={n}>
-                            {n} / {t.perPage}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <button
-                      className="icon-button page-button"
-                      disabled={page === 1 || loading}
-                      onClick={() => setPage((p) => p - 1)}
-                      aria-label={t.previous}
-                    >
-                      <ChevronLeft size={17} />
-                    </button>
-                    <span className="current-page">{page}</span>
-                    <button
-                      className="icon-button page-button"
-                      disabled={page * pageSize >= data.total || loading}
-                      onClick={() => setPage((p) => p + 1)}
-                      aria-label={t.next}
-                    >
-                      <ChevronRight size={17} />
-                    </button>
-                  </div>
-                </div>
-              )}
-            </section>
-          )}
-          {view === "categories" &&
-            (loading ? (
-              <Loading text={t.loading} />
+          {routeId ? (
+            editing && !editorLoading && catalogsLoaded ? (
+              <Editor
+                key={editorKey}
+                initial={editing}
+                initialPreview={previewing}
+                categories={categories}
+                languages={languages}
+                user={user}
+                locale={locale}
+                navigationGuard={route.guard}
+                onPersisted={persisted}
+                onClose={closeEditor}
+                onSaved={notify}
+              />
             ) : (
-              <div className="categories-grid">
-                {categories.map((c) => (
-                  <article className={`category-card ${c.color}`} key={c.id}>
-                    <span className="category-icon">
-                      <Tags size={23} />
-                    </span>
-                    <h2>{getCategoryLabel(c, locale)}</h2>
-                    {!c.name_vi?.trim() && (
-                      <p className="notice">{t.categoryMissingVi}</p>
-                    )}
-                    <p>
-                      {c.count} {t.results}
+              <div className="editor-route-loading">
+                <button className="button secondary" onClick={closeEditor}>
+                  {locale === "vi" ? "Quay lại danh sách" : "Back to list"}
+                </button>
+                {editorError || error ? (
+                  <div>
+                    <p className="notice error" role="alert">
+                      {uiMessage(editorError || error, locale)}
                     </p>
-                    <div>
+                    <button
+                      className="button secondary"
+                      onClick={() => {
+                        setEditorRetry((n) => n + 1);
+                        setRefresh((n) => n + 1);
+                      }}
+                    >
+                      {t.retry}
+                    </button>
+                  </div>
+                ) : (
+                  <Loading text={t.loading} />
+                )}
+              </div>
+            )
+          ) : (
+            <>
+              {!online && (
+                <div className="notice warning" role="status">
+                  {t.offline}
+                </div>
+              )}
+              <div className="page-heading">
+                <div>
+                  <div className="eyebrow">
+                    <span />
+                    {t.district}
+                  </div>
+                  <h1>{title}</h1>
+                  <p>{subtitle}</p>
+                </div>
+                {view !== "categories" && user.role === "admin" && (
+                  <button
+                    className="button primary"
+                    onClick={() => openEditor("new")}
+                  >
+                    <Plus size={19} />
+                    {t.add}
+                  </button>
+                )}
+                {view === "categories" && (
+                  <button
+                    className="button primary"
+                    onClick={() => {
+                      setCategoryError("");
+                      setCategoryEditing(null);
+                      setCategoryName("");
+                      setCategoryNameVi("");
+                      setCategoryDialog(true);
+                    }}
+                  >
+                    <Plus size={18} />
+                    {t.addCategory}
+                  </button>
+                )}
+              </div>
+              {(view === "places" || view === "overview") && (
+                <div className="stats">
+                  {stats.map(({ label, value, icon: Icon, color, caption }) => (
+                    <div className="stat-card" key={label}>
+                      <div className="stat-top">
+                        <span>{label}</span>
+                        <div className={`stat-icon ${color}`}>
+                          <Icon size={18} />
+                        </div>
+                      </div>
+                      <strong>
+                        {loading ? "—" : value.toString().padStart(2, "0")}
+                      </strong>
+                      <small>{caption}</small>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {error && (
+                <div className="notice error" role="alert">
+                  <span>{uiMessage(error, locale)}</span>
+                  <button
+                    className="button small"
+                    onClick={() => setRefresh((x) => x + 1)}
+                  >
+                    {t.retry}
+                  </button>
+                </div>
+              )}
+              {view === "overview" && (
+                <div className="overview-layout">
+                  <section className="panel task-panel">
+                    <div className="panel-heading">
+                      <div>
+                        <span className="eyebrow">WORKSPACE</span>
+                        <h2>{t.attention}</h2>
+                      </div>
+                      <Sparkles size={21} />
+                    </div>
+                    {[
+                      {
+                        n: summary.total - summary.translations_ready,
+                        text: t.translateTask,
+                        icon: BookOpen,
+                        v: "languages" as View,
+                      },
+                      {
+                        n: summary.total - summary.tts_ready,
+                        text: t.audioTask,
+                        icon: Headphones,
+                        v: "languages" as View,
+                      },
+                      {
+                        n: summary.in_review,
+                        text: t.reviewTask,
+                        icon: FileCheck2,
+                        v: "review" as View,
+                      },
+                    ].map(({ n, text, icon: Icon, v }) => (
+                      <button
+                        className="task"
+                        key={text}
+                        onClick={() => navigate(v)}
+                      >
+                        <span className="task-icon">
+                          <Icon size={19} />
+                        </span>
+                        <span>
+                          <strong>
+                            {n} {text}
+                          </strong>
+                          <small>
+                            {locale === "vi"
+                              ? "Xem và tiếp tục hoàn thiện nội dung"
+                              : "Review and complete your content"}
+                          </small>
+                        </span>
+                        <ArrowRight size={17} />
+                      </button>
+                    ))}
+                  </section>
+                  <section className="panel recent-panel">
+                    <div className="panel-heading">
+                      <h2>{t.recent}</h2>
                       <button
                         className="text-button"
-                        onClick={() => {
-                          navigate("places");
-                          setCategory(c.id);
-                        }}
+                        onClick={() => navigate("places")}
                       >
-                        {t.managePlaces}
-                        <ArrowRight size={16} />
+                        {t.all}
+                        <ArrowRight size={15} />
                       </button>
-                      {user.role === "admin" && (
+                    </div>
+                    {loading ? (
+                      <Loading text={t.loading} />
+                    ) : (
+                      data.items.slice(0, 4).map((p) => (
                         <button
-                          className="text-button"
-                          onClick={() => {
-                            setCategoryEditing(c);
-                            setCategoryName(c.name);
-                            setCategoryNameVi(c.name_vi ?? "");
-                            setCategoryError("");
-                            setCategoryDialog(true);
-                          }}
+                          className="recent-place"
+                          onClick={() => openEditor(p)}
+                          key={p.id}
                         >
-                          {t.editCategory}
+                          <Cover poi={p} />
+                          <div>
+                            <strong>{p.name}</strong>
+                            <small>
+                              {getCategoryLabel(
+                                categoryFor(p.category_id),
+                                locale,
+                              )}
+                            </small>
+                          </div>
+                          <Badge status={p.status} t={t} />
+                        </button>
+                      ))
+                    )}
+                  </section>
+                </div>
+              )}
+              {view === "languages" && (
+                <LanguageManager
+                  languages={languages}
+                  locale={locale}
+                  canEdit={user.role === "admin"}
+                  onSaved={notify}
+                />
+              )}
+              {(view === "places" ||
+                view === "review" ||
+                view === "languages") && (
+                <section className="panel places-panel" aria-label={t[view]}>
+                  {view === "places" && (
+                    <div
+                      className="filter-tabs"
+                      role="group"
+                      aria-label={t.status}
+                    >
+                      {[
+                        { id: "", label: t.all, count: summary.total },
+                        { id: "published", label: t.published },
+                        { id: "draft", label: t.draft },
+                        { id: "in_review", label: t.waiting },
+                        { id: "approved", label: t.approved },
+                        { id: "archived", label: t.archived },
+                      ].map((tab) => (
+                        <button
+                          key={tab.id}
+                          className={status === tab.id ? "selected" : ""}
+                          onClick={() => {
+                            setStatus(tab.id);
+                            setPage(1);
+                          }}
+                          aria-pressed={status === tab.id}
+                        >
+                          {tab.label}
+                          {tab.count !== undefined && (
+                            <span>{loading ? "–" : tab.count}</span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <div className="toolbar">
+                    <label className="search-field">
+                      <Search size={18} />
+                      <input
+                        value={query}
+                        onChange={(e) => {
+                          setQuery(e.target.value);
+                          setPage(1);
+                        }}
+                        placeholder={t.search}
+                        aria-label={t.search}
+                      />
+                      {query && (
+                        <button
+                          onClick={() => setQuery("")}
+                          aria-label={t.clear}
+                        >
+                          <X size={16} />
                         </button>
                       )}
-                      {user.role === "admin" && (
-                        <button
-                          className="icon-button"
-                          disabled={c.count > 0}
-                          onClick={() => {
-                            setCategoryError("");
-                            setDeleteTarget(c);
+                    </label>
+                    <div className="toolbar-right">
+                      <label className="select-wrap">
+                        <Tags size={16} />
+                        <select
+                          value={category}
+                          onChange={(e) => {
+                            setCategory(e.target.value);
+                            setPage(1);
                           }}
-                          aria-label={`${t.delete}: ${getCategoryLabel(c, locale)}`}
-                          title={
-                            c.count > 0
-                              ? locale === "vi"
-                                ? "Chỉ xóa được danh mục trống"
-                                : "Only empty categories can be deleted"
-                              : t.delete
+                          aria-label={t.category}
+                        >
+                          <option value="">{t.allCategories}</option>
+                          {categories.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {getCategoryLabel(c, locale)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="select-wrap sort-select">
+                        <ArrowDownWideNarrow size={16} />
+                        <select
+                          value={sort}
+                          onChange={(e) => {
+                            setSort(e.target.value);
+                            setPage(1);
+                          }}
+                          aria-label={
+                            locale === "vi" ? "Sắp xếp địa điểm" : "Sort places"
                           }
                         >
-                          <Trash2 size={16} />
-                        </button>
+                          <option value="views">
+                            {locale === "vi"
+                              ? "Lượt xem giảm dần"
+                              : "Most viewed"}
+                          </option>
+                          <option value="updated">{t.updated}</option>
+                          <option value="name">{t.nameSort}</option>
+                        </select>
+                      </label>
+                      {view === "places" && (
+                        <div className="view-toggle">
+                          <button
+                            className={layout === "list" ? "active" : ""}
+                            aria-label={t.listView}
+                            aria-pressed={layout === "list"}
+                            onClick={() => setLayout("list")}
+                          >
+                            <List size={18} />
+                          </button>
+                          <button
+                            className={layout === "grid" ? "active" : ""}
+                            aria-label={t.gridView}
+                            aria-pressed={layout === "grid"}
+                            onClick={() => setLayout("grid")}
+                          >
+                            <Grid2X2 size={17} />
+                          </button>
+                        </div>
                       )}
                     </div>
-                  </article>
+                  </div>
+                  {loading ? (
+                    <div
+                      className="skeleton-list"
+                      aria-label={t.loading}
+                      role="status"
+                    >
+                      {[1, 2, 3, 4, 5].map((n) => (
+                        <div key={n}>
+                          <span />
+                          <i />
+                          <i />
+                          <i />
+                        </div>
+                      ))}
+                    </div>
+                  ) : data.items.length === 0 ? (
+                    <Empty
+                      title={
+                        view === "review" && !query && !category
+                          ? t.emptyReview
+                          : t.noResults
+                      }
+                      description={
+                        view === "review" && !query && !category
+                          ? t.emptyReviewDesc
+                          : t.noResultsDesc
+                      }
+                    >
+                      {(query || status || category) && (
+                        <button
+                          className="button secondary"
+                          onClick={clearFilters}
+                        >
+                          {t.clear}
+                        </button>
+                      )}
+                    </Empty>
+                  ) : view === "languages" ? (
+                    <div className="table-scroll">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>{t.name}</th>
+                            {enabledLanguages.map((language) => (
+                              <th key={language.code}>
+                                {language.native_name}
+                              </th>
+                            ))}
+                            <th>{t.actions}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {data.items.map((p) => (
+                            <tr key={p.id}>
+                              <td>
+                                <div className="place-cell">
+                                  <Cover poi={p} />
+                                  <div>
+                                    <button
+                                      className="place-name"
+                                      onClick={() => openEditor(p)}
+                                    >
+                                      {p.name}
+                                    </button>
+                                    <small>
+                                      {getCategoryLabel(
+                                        categoryFor(p.category_id),
+                                        locale,
+                                      )}
+                                    </small>
+                                  </div>
+                                </div>
+                              </td>
+                              {languageCodes.map((lang) => (
+                                <td key={lang}>
+                                  <div className="translation-cell">
+                                    <span
+                                      className={
+                                        p.translations[lang]?.text
+                                          ? "ready"
+                                          : "missing"
+                                      }
+                                    >
+                                      <BookOpen size={14} />
+                                      {p.translations[lang]?.text
+                                        ? t.complete
+                                        : t.missing}
+                                    </span>
+                                    <span
+                                      className={
+                                        p.translations[lang]?.tts_ready
+                                          ? "ready"
+                                          : "missing"
+                                      }
+                                    >
+                                      <Volume2 size={14} />
+                                      {p.translations[lang]?.tts_ready
+                                        ? t.validAudio
+                                        : t.needAudio}
+                                    </span>
+                                  </div>
+                                </td>
+                              ))}
+                              <td>
+                                <button
+                                  className="row-edit"
+                                  onClick={() => openEditor(p)}
+                                >
+                                  {t.edit}
+                                  <ArrowUpRight size={14} />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (layout === "grid" || narrow) &&
+                    (view === "places" || view === "review") ? (
+                    <div className="place-grid">
+                      {data.items.map((p) => (
+                        <article className="place-card" key={p.id}>
+                          <button
+                            className="cover-button"
+                            onClick={() => openEditor(p)}
+                            aria-label={`${t.edit}: ${p.name}`}
+                          >
+                            <Cover poi={p} large />
+                          </button>
+                          <div className="place-card-content">
+                            <Badge status={p.status} t={t} />
+                            {user.role === "admin" && (
+                              <p className="card-statistics">
+                                {locale === "vi" ? "Lượt xem" : "Views"}:{" "}
+                                {p.view_count ?? 0} ·{" "}
+                                {locale === "vi"
+                                  ? "Lượt nghe"
+                                  : "Listening starts"}
+                                : {p.listen_count ?? 0}
+                              </p>
+                            )}
+                            <h3>
+                              <button onClick={() => openEditor(p)}>
+                                {p.name}
+                              </button>
+                            </h3>
+                            <p>
+                              <MapPin size={13} />
+                              {p.address}
+                            </p>
+                            <div className="card-bottom">
+                              <span>
+                                {getCategoryLabel(
+                                  categoryFor(p.category_id),
+                                  locale,
+                                )}
+                              </span>
+                              <span className="language-chips">
+                                {languageCodes
+                                  .filter(
+                                    (code) => p.translations[code]?.tts_ready,
+                                  )
+                                  .map((code) => code.toUpperCase())
+                                  .join(" · ")}
+                              </span>
+                            </div>
+                            <button
+                              className="button secondary small"
+                              onClick={() => {
+                                openEditor(p, true);
+                              }}
+                            >
+                              <Eye size={14} />
+                              {locale === "vi" ? "Xem trước" : "Preview"}
+                            </button>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="table-scroll">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>{t.name}</th>
+                            <th>{t.category}</th>
+                            <th>{t.language}</th>
+                            <th>{t.audio}</th>
+                            <th>{t.status}</th>
+                            {user.role === "admin" && (
+                              <>
+                                <th>
+                                  {locale === "vi" ? "Lượt xem" : "Views"}
+                                </th>
+                                <th>
+                                  {locale === "vi"
+                                    ? "Lượt nghe"
+                                    : "Listening starts"}
+                                </th>
+                              </>
+                            )}
+                            <th>{t.updatedAt}</th>
+                            <th className="sr-only">{t.actions}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {data.items.map((p) => {
+                            const c = categoryFor(p.category_id);
+                            const audio = languageCodes.filter(
+                              (code) => p.translations[code]?.tts_ready,
+                            ).length;
+                            return (
+                              <tr key={p.id}>
+                                <td>
+                                  <div className="place-cell">
+                                    <Cover poi={p} />
+                                    <div>
+                                      <button
+                                        className="place-name"
+                                        onClick={() => openEditor(p)}
+                                      >
+                                        {p.name}
+                                      </button>
+                                      <small>
+                                        <MapPin size={11} />
+                                        {p.address.split(",")[0]}
+                                      </small>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td>
+                                  <span className={`category-pill ${c?.color}`}>
+                                    {getCategoryLabel(c, locale) || "—"}
+                                  </span>
+                                </td>
+                                <td>
+                                  <div className="language-chips">
+                                    {enabledLanguages
+                                      .filter(
+                                        (language) =>
+                                          language.required ||
+                                          p.translations[language.code]
+                                            ?.tts_ready,
+                                      )
+                                      .map(({ code: l }) => (
+                                        <span
+                                          key={l}
+                                          className={
+                                            p.translations[l]?.text
+                                              ? "available"
+                                              : "unavailable"
+                                          }
+                                          title={
+                                            p.translations[l]?.text
+                                              ? t.complete
+                                              : t.missing
+                                          }
+                                        >
+                                          {l.toUpperCase()}
+                                          {p.translations[l]?.text && (
+                                            <Check size={10} />
+                                          )}
+                                        </span>
+                                      ))}
+                                  </div>
+                                </td>
+                                <td>
+                                  <span
+                                    className={`audio-count ${enabledLanguages.filter((language) => language.required).every((language) => p.translations[language.code]?.tts_ready) ? "ready" : ""}`}
+                                    title={`${audio}/${languageCodes.length} ${t.validAudio}`}
+                                  >
+                                    <Headphones size={15} />
+                                    {audio}/{languageCodes.length}
+                                  </span>
+                                </td>
+                                <td>
+                                  <Badge status={p.status} t={t} />
+                                  {p.has_published &&
+                                    p.status !== "published" && (
+                                      <small className="live-note">
+                                        {locale === "vi"
+                                          ? "Có bản đang phát hành"
+                                          : "Live version available"}
+                                      </small>
+                                    )}
+                                </td>
+                                {user.role === "admin" && (
+                                  <>
+                                    <td>{p.view_count ?? 0}</td>
+                                    <td>{p.listen_count ?? 0}</td>
+                                  </>
+                                )}
+                                <td>
+                                  <span className="date-cell">
+                                    {new Intl.DateTimeFormat(
+                                      locale === "vi" ? "vi-VN" : "en-GB",
+                                      {
+                                        day: "2-digit",
+                                        month: "2-digit",
+                                        year: "numeric",
+                                        timeZone: "Asia/Bangkok",
+                                      },
+                                    ).format(new Date(p.updated_at))}
+                                  </span>
+                                </td>
+                                <td>
+                                  <button
+                                    className="row-edit"
+                                    onClick={() => {
+                                      openEditor(p, true);
+                                    }}
+                                    aria-label={`${locale === "vi" ? "Xem trước" : "Preview"}: ${p.name}`}
+                                  >
+                                    <Eye size={17} />
+                                  </button>
+                                  <button
+                                    className="row-edit"
+                                    onClick={() => openEditor(p)}
+                                    aria-label={`${t.edit}: ${p.name}`}
+                                    title={t.edit}
+                                  >
+                                    <ArrowUpRight size={17} />
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                  {view !== "languages" && (
+                    <div className="pagination">
+                      <span>
+                        {data.total > 0
+                          ? `${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, data.total)}`
+                          : "0"}{" "}
+                        <span className="muted">
+                          / {data.total} {t.results}
+                        </span>
+                      </span>
+                      <div>
+                        <label className="per-page">
+                          <select
+                            value={pageSize}
+                            onChange={(e) => {
+                              setPageSize(Number(e.target.value));
+                              setPage(1);
+                            }}
+                            aria-label={t.perPage}
+                          >
+                            {[4, 8, 16, 32].map((n) => (
+                              <option key={n} value={n}>
+                                {n} / {t.perPage}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <button
+                          className="icon-button page-button"
+                          disabled={page === 1 || loading}
+                          onClick={() => setPage((p) => p - 1)}
+                          aria-label={t.previous}
+                        >
+                          <ChevronLeft size={17} />
+                        </button>
+                        <span className="current-page">{page}</span>
+                        <button
+                          className="icon-button page-button"
+                          disabled={page * pageSize >= data.total || loading}
+                          onClick={() => setPage((p) => p + 1)}
+                          aria-label={t.next}
+                        >
+                          <ChevronRight size={17} />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </section>
+              )}
+              {view === "categories" &&
+                (loading ? (
+                  <Loading text={t.loading} />
+                ) : (
+                  <div className="categories-grid">
+                    {categories.map((c) => (
+                      <article
+                        className={`category-card ${c.color}`}
+                        key={c.id}
+                      >
+                        <span className="category-icon">
+                          <Tags size={23} />
+                        </span>
+                        <h2>{getCategoryLabel(c, locale)}</h2>
+                        {!c.name_vi?.trim() && (
+                          <p className="notice">{t.categoryMissingVi}</p>
+                        )}
+                        <p>
+                          {c.count} {t.results}
+                        </p>
+                        <div>
+                          <button
+                            className="text-button"
+                            onClick={() => {
+                              navigate("places");
+                              setCategory(c.id);
+                            }}
+                          >
+                            {t.managePlaces}
+                            <ArrowRight size={16} />
+                          </button>
+                          {user.role === "admin" && (
+                            <button
+                              className="text-button"
+                              onClick={() => {
+                                setCategoryEditing(c);
+                                setCategoryName(c.name);
+                                setCategoryNameVi(c.name_vi ?? "");
+                                setCategoryError("");
+                                setCategoryDialog(true);
+                              }}
+                            >
+                              {t.editCategory}
+                            </button>
+                          )}
+                          {user.role === "admin" && (
+                            <button
+                              className="icon-button"
+                              disabled={c.count > 0}
+                              onClick={() => {
+                                setCategoryError("");
+                                setDeleteTarget(c);
+                              }}
+                              aria-label={`${t.delete}: ${getCategoryLabel(c, locale)}`}
+                              title={
+                                c.count > 0
+                                  ? locale === "vi"
+                                    ? "Chỉ xóa được danh mục trống"
+                                    : "Only empty categories can be deleted"
+                                  : t.delete
+                              }
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          )}
+                        </div>
+                      </article>
+                    ))}
+                  </div>
                 ))}
+              <div className="guide-banner">
+                <span className="guide-icon">
+                  <BookOpen size={23} />
+                </span>
+                <div>
+                  <strong>{t.guideTitle}</strong>
+                  <p>{t.guideDesc}</p>
+                </div>
+                <button
+                  className="button secondary"
+                  onClick={() => setHelp(true)}
+                >
+                  {t.seeGuide}
+                  <ArrowRight size={15} />
+                </button>
               </div>
-            ))}
-          <div className="guide-banner">
-            <span className="guide-icon">
-              <BookOpen size={23} />
-            </span>
-            <div>
-              <strong>{t.guideTitle}</strong>
-              <p>{t.guideDesc}</p>
-            </div>
-            <button className="button secondary" onClick={() => setHelp(true)}>
-              {t.seeGuide}
-              <ArrowRight size={15} />
-            </button>
-          </div>
-          <footer className="page-footer">
-            <span>
-              © {new Date().getFullYear()} Saigon Stories <i>•</i>{" "}
-              {locale === "vi"
-                ? "Chăm chút từng trải nghiệm"
-                : "Made for meaningful experiences"}
-            </span>
-            <span>{date.format(new Date())}</span>
-          </footer>
+              <footer className="page-footer">
+                <span>
+                  © {new Date().getFullYear()} Saigon Stories <i>•</i>{" "}
+                  {locale === "vi"
+                    ? "Chăm chút từng trải nghiệm"
+                    : "Made for meaningful experiences"}
+                </span>
+                <span>{date.format(new Date())}</span>
+              </footer>
+            </>
+          )}
         </main>
       </div>
-      {editing && (
-        <Editor
-          initial={editing}
-          initialPreview={previewing}
-          categories={categories}
-          languages={languages}
-          user={user}
-          locale={locale}
-          onClose={() => {
-            setEditing(null);
-            setPreviewing(false);
-          }}
-          onSaved={notify}
-        />
-      )}
       {toast && (
         <div className="toast" role="status">
           <CheckCheck size={19} />

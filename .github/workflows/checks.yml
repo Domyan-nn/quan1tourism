@@ -44,7 +44,7 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: node --test tests/cloudflare-map-tiles.test.mjs tests/cloudflare-proxy.test.mjs
-      - run: node --experimental-strip-types --test tests/narration-logic.test.mjs
+      - run: npm run test:narration
       - run: npm run test:mobile
       - run: npm run test:tooling
       - run: node --experimental-strip-types --test tests/expo-link.test.mjs

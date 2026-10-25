@@ -2299,7 +2299,7 @@ tbody tr:hover {
   color: color-mix(in srgb, var(--ink), #243b29 40%);
 }
 .language-chips > span.unavailable {
-  color: #858c78;
+  color: #536747;
 }
 .stat-top > span,
 .guide-banner p {
@@ -3732,4 +3732,95 @@ th {
 .staged-image.large {
   width: 100%;
   height: 220px;
+}
+
+/* The place editor uses the document scroll, with its actions in normal flow. */
+html:has(.editor-page), body:has(.editor-page), .app-shell:has(.editor-page) {
+  overflow-x: visible;
+}
+[hidden] { display: none !important; }
+.editor-page { max-width: 1400px; margin: 0 auto; min-width: 0; overflow-wrap: anywhere; }
+.editor-page-header { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin-bottom: 24px; }
+.editor-page-header > div { flex: 1 1 260px; min-width: 0; }
+.editor-page-header h1 { font-size: clamp(1.35rem, 2vw, 2rem); color: #304d2d; margin: 0 0 10px; line-height: 1.4; }
+.editor-page-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: .85rem; color: #536747; }
+.editor-page .save-state { display: flex; white-space: normal; font-size: .85rem; color: #536747; line-height: 1.6; }
+.editor-page-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.editor-page-tabs > button { display: flex; align-items: center; justify-content: center; gap: 8px; flex: 1 1 190px; min-height: 48px; padding: 12px 16px; border: 1px solid #cbd8c0; border-radius: 10px; color: #35532e; background: #fff; font-size: .95rem; text-align: left; }
+.editor-page-tabs > button[aria-selected="true"] { background: #eaf2e2; border-color: #4c7538; box-shadow: inset 0 -3px #4c7538; font-weight: 600; }
+.editor-page-tabs > button > span { display: inline-grid; place-items: center; border: 1px solid currentColor; border-radius: 50%; width: 22px; height: 22px; flex-shrink: 0; }
+.editor-page .editor-main { min-height: 0; }
+.editor-page .editor-body { overflow: visible; padding: 24px; background: #fff; border: 1px solid var(--border); border-radius: 12px; flex: initial; }
+.editor-page .editor-fields { margin: 0; }
+.editor-page #editor-panel-0 > .editor-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 24px; }
+.editor-page #editor-panel-0 > .editor-fields > :not(label),
+.editor-page #editor-panel-0 > .editor-fields > label:nth-of-type(n + 3) { grid-column: 1 / -1; }
+.editor-page .field-label { font-size: .95rem; color: #354e30; }
+.editor-page .input { width: 100%; max-width: 100%; font-size: 1rem; }
+.editor-page fieldset { min-width: 0; }
+.editor-page .field-label, .editor-page .location-details, .editor-page .checklist-language { scroll-margin-block: 24px 180px; }
+.editor-page .editor-footer { position: sticky; bottom: 0; z-index: 20; display: flex; flex-wrap: wrap; gap: 12px; height: auto; padding: 16px 0; background: #f8faf5; border-top: 1px solid #cbd8c0; margin-top: 24px; }
+.editor-page .editor-footer > div { display: flex; flex-wrap: wrap; gap: 10px; margin-left: auto; }
+.editor-page .button { min-height: 44px; padding: 11px 16px; font-size: .9rem; line-height: 1.5; white-space: normal; max-width: 100%; overflow-wrap: anywhere; }
+.editor-page .editor-footer .button > svg { display: block; flex-shrink: 0; }
+.editor-page .field-hint { font-size: .85rem; color: #536747; line-height: 1.7; }
+.editor-page .field-error { color: #9a3028; font-size: .9rem; }
+.editor-page .notice, .editor-page p { line-height: 1.75; }
+.editor-page .notice { font-size: .9rem; }
+.editor-page .notice.warning { color: #704614; }
+.creation-methods { margin-bottom: 24px; }
+.creation-method-buttons, .publication-actions, .active-ai-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.creation-method-buttons [aria-pressed="true"] { border-color: #4c7538; background: #eaf2e2; }
+.publication-actions { margin: 20px 0; }
+.review-confirmation { display: flex; align-items: flex-start; gap: 10px; line-height: 1.7; margin: 16px 0; flex-basis: 100%; }
+.review-confirmation input { width: 18px; height: 18px; flex-shrink: 0; margin-top: 4px; }
+.narration-workspace { display: grid; grid-template-columns: minmax(180px, 230px) minmax(0, 1fr); gap: 28px; align-items: start; }
+.narration-workspace > .language-tabs { display: flex; flex-direction: column; flex-wrap: nowrap; gap: 6px; margin: 0; padding: 0; border: 0; }
+.narration-workspace > .language-tabs > button { display: flex; width: 100%; max-width: 100%; gap: 8px; align-items: center; text-align: left; padding: 12px; min-height: 44px; font-size: .9rem; color: #35532e; border: 1px solid #dce5d4; border-radius: 8px; overflow-wrap: anywhere; white-space: normal; }
+.narration-workspace > .language-tabs > button.active { color: #35532e; background: #eaf2e2; border-color: #4c7538; box-shadow: inset 3px 0 #4c7538; }
+.narration-workspace .lang-flag { color: #536747; font-size: .72rem; min-width: 33px; }
+.narration-workspace .language-review-symbol { margin-left: auto; }
+.narration-active { min-width: 0; }
+.narration-active > fieldset { max-width: 85ch; }
+.editor-page .speech-progress input { margin-inline: 0; min-width: 0; max-width: 100%; }
+.narration-active h2 { margin: 0 0 8px; color: #304d2d; font-size: 1.35rem; }
+.editor-page .narration-input { min-height: 300px; }
+.editor-page .translation-supplement { padding: 20px 0 0; margin-top: 24px; border: 0; border-top: 1px solid var(--border); background: transparent; }
+.editor-page .translation-supplement .button { max-width: 100%; }
+.translation-supplement details { margin: 20px 0 0; }
+.translation-supplement summary, .location-details summary { cursor: pointer; line-height: 1.7; }
+.location-summary { display: block; font-size: .85rem; margin-top: 6px; color: #536747; }
+.editor-page .location-details summary { flex-wrap: wrap; font-size: .9rem; color: #35532e; }
+.batch-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr)); gap: 12px; margin: 18px 0; }
+.batch-options label { display: flex; align-items: center; gap: 8px; }
+.ai-comparison { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }
+.ai-comparison > section { min-width: 0; padding: 16px; border: 1px solid #dce5d4; border-radius: 8px; }
+.ai-comparison h4 { margin: 0 0 16px; color: #304d2d; font-size: 1rem; }
+.comparison-switch { display: none; }
+.save-generate { padding: 16px; margin-top: 24px; background: #f5f8ef; border-radius: 10px; }
+.editor-page .checklist-item { gap: 12px; flex-wrap: wrap; padding: 12px 0; }
+.editor-page .readiness h2 { color: #304d2d; font-size: 1.35rem; line-height: 1.5; margin: 0 0 8px; }
+.editor-page .checklist-item > span:nth-child(2) { flex: 1 1 180px; }
+.editor-page :focus-visible { outline: 3px solid #355e9d; outline-offset: 3px; }
+@media (max-width: 1050px) {
+  .narration-workspace { grid-template-columns: minmax(145px, 190px) minmax(0, 1fr); gap: 20px; }
+  .ai-comparison { grid-template-columns: minmax(0, 1fr); }
+  .comparison-switch { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+  .show-current .comparison-proposal, .show-proposal .comparison-current { display: none; }
+}
+@media (max-width: 760px) {
+  .editor-page-header { gap: 12px; }
+  .editor-page-header > div, .editor-page-header > .save-state { flex-basis: 100%; }
+  .editor-page-tabs > button { flex-basis: 100%; justify-content: flex-start; }
+  .editor-page .editor-body { padding: 16px; }
+  .editor-page #editor-panel-0 > .editor-fields { grid-template-columns: minmax(0, 1fr); }
+  .narration-workspace { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .narration-workspace > .language-tabs { flex-direction: row; flex-wrap: wrap; gap: 6px; }
+  .narration-workspace > .language-tabs > button { flex: 1 1 135px; width: auto; padding: 10px; }
+  .editor-page .editor-footer { gap: 8px; padding: 12px 0 max(12px, env(safe-area-inset-bottom)); }
+  .editor-page .editor-footer > div { width: 100%; margin: 0; gap: 8px; }
+  .editor-page .editor-footer .button { flex: 1 1 130px; }
+  .editor-page .editor-footer > .save-state { width: 100%; }
+  .editor-page .image-upload { flex-wrap: wrap; }
+  .editor-page .ai-comparison > section { padding: 12px; }
 }

@@ -268,7 +268,13 @@ export function LocationEditor({
       className="location-details"
       onToggle={(event) => setOpen(event.currentTarget.open)}
     >
-      <summary>{vi ? "Chỉnh sửa nâng cao" : "Advanced editing"}</summary>
+      <summary>
+        <strong>{vi ? "Chỉnh vị trí" : "Edit location"}</strong>
+        <span className="location-summary">{valid(value) ? vi ? "Đã có tọa độ" : "Coordinates set" : vi ? "Chưa có tọa độ" : "No coordinates"}
+          {` · ${value.trigger_radius_m ?? 100} m · `}
+          {vi ? `Tự thuyết minh: ${value.auto_narration_enabled ? "Bật" : "Tắt"}` : `Automatic narration: ${value.auto_narration_enabled ? "On" : "Off"}`}
+        </span>
+      </summary>
       {open && (
         <div className="location-editor">
           <label className="field-label">

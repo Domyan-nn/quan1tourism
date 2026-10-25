@@ -1,3 +1,4 @@
+import { workerOnline } from "./editor-helpers";
 import { readFileSync } from "node:fs";
 import { test, expect } from "./fixtures";
 import { mockSpeech } from "./speech";
@@ -45,20 +46,23 @@ test("translation policy, safe errors, partial success and review stay consisten
     .fill(name);
   await page.getByRole("button", { name, exact: true }).click();
   await page
-    .getByRole("button", { name: "Bước 2: Nội dung đa ngôn ngữ", exact: true })
+    .locator("#editor-tab-1")
     .click();
   const region = page.getByRole("region", {
     name: /^(Thuyết minh đa ngôn ngữ|Multilingual narration)$/,
     exact: true,
   });
-  const french = region.getByRole("row").filter({ hasText: "Français" });
-  const german = region.getByRole("row").filter({ hasText: "Deutsch" });
-  await expect(french.getByRole("checkbox")).not.toBeChecked();
+  await workerOnline(page);
+  await page.getByRole("tab").filter({ hasText: "Français" }).click();
+  const french = region;
+  const german = region;
+  await region.getByText("Tạo nhiều ngôn ngữ", { exact: true }).click();
+  await expect(region.getByLabel("Français", { exact: true })).not.toBeChecked();
   await region
     .getByLabel("Tôi đã xác minh và lưu nội dung nguồn tiếng Việt.")
     .check();
-  await french.getByRole("checkbox").check();
-  await german.getByRole("checkbox").check();
+  await region.getByLabel("Français", { exact: true }).check();
+  await region.getByLabel("Deutsch", { exact: true }).check();
   await expect(
     region.getByRole("button", {
       name: "AI tạo các ngôn ngữ đã chọn",
@@ -79,7 +83,7 @@ test("translation policy, safe errors, partial success and review stay consisten
   expect(blocked.status()).toBe(422);
   expect((await blocked.json()).detail).toBe("batch_limited");
   await french
-    .getByRole("button", { name: "AI bổ sung / thử lại", exact: true })
+    .getByRole("button", { name: "Tạo bằng AI", exact: true })
     .click();
   await expect(french).toContainText("Đang chờ máy AI");
   const obsolete = await page.request.post("/api/v1/worker/claim", {
@@ -125,14 +129,14 @@ test("translation policy, safe errors, partial success and review stay consisten
     french.getByRole("button", { name: "Xem & chỉnh bản AI", exact: true }),
   ).toHaveCount(0);
   await page
-    .getByRole("dialog")
     .getByRole("button", { name: "Ngôn ngữ giao diện", exact: true })
     .click();
   await expect(french).toContainText(
     "AI copied the source instead of translating",
   );
+  await page.getByRole("tab").filter({ hasText: "Deutsch" }).click();
   await german
-    .getByRole("button", { name: "AI generate / retry", exact: true })
+    .getByRole("button", { name: "Generate with AI", exact: true })
     .click();
   await expect(german).toContainText("Waiting for AI worker");
   const deJob = await claim();
@@ -144,8 +148,9 @@ test("translation policy, safe errors, partial success and review stay consisten
     "completed",
   );
   await expect(german).toContainText("Generated — needs review");
-  await expect(region).toContainText("Passed automated checks: 1");
-  await expect(region).toContainText("Failed/uncertain: 1");
+  await page.getByRole("tab").filter({ hasText: "Français" }).click();
+  await expect(region).toContainText("AI copied the source");
+  await page.getByRole("tab").filter({ hasText: "Deutsch" }).click();
   expect(
     (await (await finish(deJob, { title: "Late copy", text: source })).json())
       .status,
@@ -165,7 +170,7 @@ test("translation policy, safe errors, partial success and review stay consisten
     .getByLabel("I have checked the translation language and facts.")
     .check();
   await region
-    .getByRole("button", { name: "Save translation to draft", exact: true })
+    .getByRole("button", { name: "Use this version in draft", exact: true })
     .click();
   await expect
     .poll(
@@ -215,7 +220,7 @@ test("known model failures are explained and retry remains scoped to one languag
     .fill(name);
   await page.getByRole("button", { name, exact: true }).click();
   await page
-    .getByRole("button", { name: "Bước 2: Nội dung đa ngôn ngữ", exact: true })
+    .locator("#editor-tab-1")
     .click();
   const region = page.getByRole("region", {
     name: "Thuyết minh đa ngôn ngữ",
@@ -224,9 +229,11 @@ test("known model failures are explained and retry remains scoped to one languag
   await region
     .getByLabel("Tôi đã xác minh và lưu nội dung nguồn tiếng Việt.")
     .check();
-  const row = region.getByRole("row").filter({ hasText: "العربية" });
+  await workerOnline(page);
+  await page.getByRole("tab").filter({ hasText: "العربية" }).click();
+  const row = region;
   await row
-    .getByRole("button", { name: "AI bổ sung / thử lại", exact: true })
+    .getByRole("button", { name: "Tạo bằng AI", exact: true })
     .click();
   await expect(row).toContainText("Đang chờ máy AI");
   const job = (
@@ -251,7 +258,7 @@ test("known model failures are explained and retry remains scoped to one languag
   });
   await expect(row).toContainText("Model AI xử lý quá thời gian giới hạn");
   await expect(
-    row.getByRole("button", { name: "AI bổ sung / thử lại", exact: true }),
+    row.getByRole("button", { name: "Tạo bằng AI", exact: true }),
   ).toBeEnabled();
   const jobs = (
     await (

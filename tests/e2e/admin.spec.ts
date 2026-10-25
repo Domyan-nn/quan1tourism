@@ -1,3 +1,4 @@
+import { publishDraft } from "./editor-helpers";
 import { type Page } from "@playwright/test";
 import { test, expect, offline } from "./fixtures";
 import AxeBuilder from "@axe-core/playwright";
@@ -158,7 +159,7 @@ test("admin publishes text and visitor listens in both languages with TTS", asyn
   await page
     .getByLabel("Địa chỉ", { exact: true })
     .fill("Quận 1, TP. Hồ Chí Minh");
-  await page.getByRole("button", { name: "Tiếp tục", exact: true }).click();
+  await page.locator("#editor-tab-1").click();
   await page.getByLabel("Tiêu đề thuyết minh", { exact: false }).fill(viTitle);
   await page
     .getByLabel("Bài thuyết minh", { exact: false })
@@ -168,23 +169,7 @@ test("admin publishes text and visitor listens in both languages with TTS", asyn
   await page
     .getByLabel("Bài thuyết minh", { exact: false })
     .fill("User interface test content.");
-  await page.getByRole("button", { name: "Tiếp tục", exact: true }).click();
-  await expect(page.locator(".tts-preview-card")).toHaveCount(2);
-  await page.getByRole("button", { name: "Tiếp tục", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Bước 1: Thông tin địa điểm", exact: true })
-    .click();
-  await page
-    .getByLabel("Trạng thái hiển thị", { exact: true })
-    .selectOption("published");
-  await page.getByRole("button", { name: "Lưu thay đổi", exact: true }).click();
-  await expect(
-    page.getByText("Đã lưu thay đổi.", { exact: true }),
-  ).toBeVisible();
-  await page.screenshot({
-    path: `.runtime/screenshots/editor-${info.project.name}.png`,
-    fullPage: true,
-  });
+  await publishDraft(page);
   const guestContext = await browser.newContext();
   await offline(guestContext);
   const guest = await guestContext.newPage();
@@ -296,9 +281,36 @@ test("Wikipedia AI import fills a draft and persists its source", async ({
   await page
     .getByRole("button", { name: "Thêm địa điểm", exact: true })
     .click();
+  await page
+    .getByLabel("Tên địa điểm", { exact: false })
+    .fill("Đang nhập thủ công");
+  await page.getByLabel("Địa chỉ", { exact: true }).fill("Địa chỉ thủ công");
+  await page
+    .getByRole("button", { name: "Tạo từ Wikipedia", exact: true })
+    .click();
   await page.getByLabel("URL Wikipedia", { exact: true }).fill(sourceUrl);
   await page
     .getByRole("button", { name: "Tạo thông tin bằng AI", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", {
+      name: "Xem trước thông tin Wikipedia",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Tên địa điểm", { exact: false })).toHaveValue(
+    "Đang nhập thủ công",
+  );
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await page
+    .getByRole("button", { name: "Dùng thông tin này", exact: true })
+    .click();
+  await expect(page.getByLabel("Tên địa điểm", { exact: false })).toHaveValue(
+    "Đang nhập thủ công",
+  );
+  page.once("dialog", (dialog) => dialog.accept());
+  await page
+    .getByRole("button", { name: "Dùng thông tin này", exact: true })
     .click();
   await expect(page.getByLabel("Tên địa điểm", { exact: false })).toHaveValue(
     name,
@@ -325,7 +337,7 @@ test("Wikipedia AI import fills a draft and persists its source", async ({
         response.request().method() === "POST",
       { timeout: 10000 },
     ),
-    page.getByRole("button", { name: "Lưu thay đổi", exact: true }).click(),
+    page.getByRole("button", { name: "Lưu nháp", exact: true }).click(),
   ]);
   expect(response.status()).toBe(201);
   const poi = await response.json();
@@ -334,7 +346,9 @@ test("Wikipedia AI import fills a draft and persists its source", async ({
   expect(poi.latitude).toBeNull();
   expect(poi.translations.vi.text).toContain("Wikipedia");
   expect(poi.translations.en.text).toContain("Wikipedia");
-  await page.keyboard.press("Escape");
+  await page
+    .getByRole("button", { name: "Quay lại danh sách", exact: true })
+    .click();
   await page
     .getByRole("textbox", { name: "Tìm địa điểm, địa chỉ…" })
     .fill(name);
@@ -419,6 +433,9 @@ test("cloud AI request resumes after reload and returns a private draft", async 
     .getByRole("button", { name: "Thêm địa điểm", exact: true })
     .click();
   await page
+    .getByRole("button", { name: "Tạo từ Wikipedia", exact: true })
+    .click();
+  await page
     .getByLabel("URL Wikipedia", { exact: true })
     .fill("https://vi.wikipedia.org/wiki/Worker_test");
   await page
@@ -430,10 +447,13 @@ test("cloud AI request resumes after reload and returns a private draft", async 
   page.once("dialog", (dialog) => dialog.accept());
   await page.reload();
   await page
-    .getByRole("button", { name: "Thêm địa điểm", exact: true })
+    .getByRole("button", { name: "Tạo từ Wikipedia", exact: true })
     .click();
   await expect(page.getByText(/Đang chờ máy AI nhận việc/)).toBeVisible();
   completed = true;
+  await page
+    .getByRole("button", { name: "Dùng thông tin này", exact: true })
+    .click();
   await expect(page.getByLabel("Tên địa điểm", { exact: false })).toHaveValue(
     name,
   );
@@ -441,32 +461,35 @@ test("cloud AI request resumes after reload and returns a private draft", async 
     .poll(() => page.evaluate(() => localStorage.getItem("quan1-ai-job")))
     .toBeNull();
   await expect(
-    page.getByRole("button", { name: "Lưu thay đổi", exact: true }),
+    page.getByRole("button", { name: "Lưu nháp", exact: true }),
   ).toBeEnabled();
 });
 
-for (const failure of ["storage", "upload-response", "visibility"] as const) {
-  test(`saving with an image retries the ${failure} step without duplicate places or uploads`, async ({ page }, info) => {
+for (const failure of ["storage", "upload-response"] as const) {
+  test(`saving with an image retries the ${failure} step without duplicate places or uploads`, async ({
+    page,
+  }, info) => {
     await login(page);
-    await page.getByRole("button", { name: "Thêm địa điểm", exact: true }).click();
+    await page
+      .getByRole("button", { name: "Thêm địa điểm", exact: true })
+      .click();
     const name = `Image recovery ${failure} ${info.project.name} ${Date.now()}`;
     await page.getByLabel("Tên địa điểm", { exact: false }).fill(name);
-    await page.getByLabel("Địa chỉ", { exact: true }).fill("Quận 1, TP. Hồ Chí Minh");
-    await page.locator('input[type="file"]').setInputFiles({ name: "cover.png", mimeType: "image/png",
-      buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAIAAAAC64paAAAAK0lEQVR4nGNkaGAgGzCRr5VhVDOpgIlkHUhgVDOJgIlUDchgVDOJgKIAAwDFMgCoOrIAcgAAAABJRU5ErkJggg==", "base64") });
-    if (failure === "visibility") {
-      await page.getByRole("button", { name: "Bước 2: Nội dung đa ngôn ngữ", exact: true }).click();
-      await page.getByLabel("Tiêu đề thuyết minh", { exact: false }).fill(name);
-      await page.getByLabel("Bài thuyết minh", { exact: false }).fill("Nội dung kiểm thử lưu ảnh.");
-      await page.getByRole("tab", { name: "EN English" }).click();
-      await page.getByLabel("Tiêu đề thuyết minh", { exact: false }).fill("Image recovery");
-      await page.getByLabel("Bài thuyết minh", { exact: false }).fill("Image persistence test narration.");
-      await page.getByRole("button", { name: "Bước 1: Thông tin địa điểm", exact: true }).click();
-      await page.getByLabel("Trạng thái hiển thị", { exact: true }).selectOption("published");
-    }
+    await page
+      .getByLabel("Địa chỉ", { exact: true })
+      .fill("Quận 1, TP. Hồ Chí Minh");
+    await page
+      .locator('input[type="file"]')
+      .setInputFiles({
+        name: "cover.png",
+        mimeType: "image/png",
+        buffer: Buffer.from(
+          "iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAIAAAAC64paAAAAK0lEQVR4nGNkaGAgGzCRr5VhVDOpgIlkHUhgVDOJgIlUDchgVDOJgKIAAwDFMgCoOrIAcgAAAABJRU5ErkJggg==",
+          "base64",
+        ),
+      });
     let creates = 0;
     let uploads = 0;
-    let visibilityAttempts = 0;
     let poiId = "";
     const uploadIds: string[] = [];
     await page.route("**/api/v1/admin/pois**", async (route) => {
@@ -482,43 +505,66 @@ for (const failure of ["storage", "upload-response", "visibility"] as const) {
         uploads++;
         uploadIds.push(url.searchParams.get("upload_id")!);
         if (uploads === 1 && failure === "storage") {
-          return route.fulfill({ status: 503, json: { detail: "media_storage_unavailable" } });
+          return route.fulfill({
+            status: 503,
+            json: { detail: "media_storage_unavailable" },
+          });
         }
         if (uploads === 1 && failure === "upload-response") {
           expect((await route.fetch()).status()).toBe(200);
           return route.abort("failed");
         }
       }
-      if (request.method() === "PUT" && request.postDataJSON().status === "published") {
-        visibilityAttempts++;
-        if (visibilityAttempts === 1 && failure === "visibility") {
-          return route.fulfill({ status: 503, json: { detail: "temporary_failure" } });
-        }
-      }
       return route.continue();
     });
-    await page.getByRole("button", { name: "Lưu thay đổi", exact: true }).click();
-    await expect(page.getByRole("alert")).toContainText(failure === "storage"
-      ? "Thông tin đã lưu, ảnh chưa tải lên"
-      : failure === "upload-response" ? "Thông tin đã lưu; chưa xác nhận ảnh tải lên"
-      : "Thông tin và ảnh đã lưu; chưa xác nhận trạng thái hiển thị");
-    await expect(page.getByLabel("Tên địa điểm", { exact: false })).toHaveValue(name);
-    await expect(page.getByText("Đã lưu thay đổi.", { exact: true })).toHaveCount(0);
-    await page.screenshot({ path: `.runtime/screenshots/admin-image-${failure}-${info.project.name}.png`, fullPage: true });
-    await page.getByRole("button", { name: "Lưu thay đổi", exact: true }).click();
-    await expect(page.getByText("Đã lưu thay đổi.", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Lưu nháp", exact: true }).click();
+    await expect(page.getByRole("alert")).toContainText(
+      failure === "storage"
+        ? "Thông tin đã lưu, ảnh chưa tải lên"
+        : failure === "upload-response"
+          ? "Thông tin đã lưu; chưa xác nhận ảnh tải lên"
+          : "Thông tin và ảnh đã lưu; chưa xác nhận trạng thái hiển thị",
+    );
+    await expect(page.getByLabel("Tên địa điểm", { exact: false })).toHaveValue(
+      name,
+    );
+    await expect(
+      page.getByText("Đã lưu thay đổi.", { exact: true }),
+    ).toHaveCount(0);
+    await page.screenshot({
+      path: `.runtime/screenshots/admin-image-${failure}-${info.project.name}.png`,
+      fullPage: true,
+    });
+    await page
+      .getByRole("button", { name: "Lưu thay đổi", exact: true })
+      .click();
+    await expect(
+      page.getByText("Đã lưu thay đổi.", { exact: true }),
+    ).toBeVisible();
     expect(creates).toBe(1);
-    expect(uploads).toBe(failure === "visibility" ? 1 : 2);
+    expect(uploads).toBe(2);
     expect(new Set(uploadIds).size).toBe(1);
-    const history = await (await page.request.get(`/api/v1/admin/pois/${poiId}/history`)).json();
-    expect(history.events.filter((event: any) => event.action === "upload")).toHaveLength(1);
-    const saved = await (await page.request.get(`/api/v1/admin/pois/${poiId}`)).json();
+    const history = await (
+      await page.request.get(`/api/v1/admin/pois/${poiId}/history`)
+    ).json();
+    expect(
+      history.events.filter((event: any) => event.action === "upload"),
+    ).toHaveLength(1);
+    const saved = await (
+      await page.request.get(`/api/v1/admin/pois/${poiId}`)
+    ).json();
     expect(saved.image_id).toBe(uploadIds[0]);
-    expect(saved.status).toBe(failure === "visibility" ? "published" : "draft");
-    await page.keyboard.press("Escape");
-    await page.getByRole("textbox", { name: "Tìm địa điểm, địa chỉ…" }).fill(name);
+    expect(saved.status).toBe("draft");
+    await page
+      .getByRole("button", { name: "Quay lại danh sách", exact: true })
+      .click();
+    await page
+      .getByRole("textbox", { name: "Tìm địa điểm, địa chỉ…" })
+      .fill(name);
     await page.getByRole("button", { name, exact: true }).click();
-    await expect(page.getByLabel("Tên địa điểm", { exact: false })).toHaveValue(name);
+    await expect(page.getByLabel("Tên địa điểm", { exact: false })).toHaveValue(
+      name,
+    );
     await expect(page.locator(".image-upload img")).toBeVisible();
   });
 }

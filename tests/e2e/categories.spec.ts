@@ -101,15 +101,15 @@ test("Editor changes category labels without changing the selected ID or unsaved
     .getByRole("textbox", { name: "Tìm địa điểm, địa chỉ…", exact: true })
     .fill("Dinh Độc Lập");
   await page.getByRole("button", { name: "Dinh Độc Lập", exact: true }).click();
-  const dialog = page.getByRole("dialog");
-  const select = dialog
+  const editor = page.locator(".editor-page");
+  const select = editor
     .getByRole("combobox")
     .filter({ has: page.locator('option[value="heritage"]') });
   await expect(select.locator('option[value="heritage"]')).toHaveText(
     "Di tích lịch sử",
   );
   await select.selectOption("culture");
-  await dialog
+  await page
     .getByRole("button", { name: "Ngôn ngữ giao diện", exact: true })
     .click();
   await expect(select).toHaveValue("culture");

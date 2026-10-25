@@ -1,3 +1,4 @@
+import { workerOnline } from "./editor-helpers";
 import { test, expect } from "./fixtures";
 import { mockSpeech } from "./speech";
 import type { Page } from "@playwright/test";
@@ -246,11 +247,10 @@ test("admin UI switch preserves unsaved radius; restore and cancel never write i
     .getByRole("textbox", { name: "Tìm địa điểm, địa chỉ…" })
     .fill(name);
   await page.getByRole("button", { name, exact: true }).click();
-  await page.getByText("Chỉnh sửa nâng cao", { exact: true }).click();
+  await page.getByText("Chỉnh vị trí", { exact: true }).click();
   await page.getByLabel("Bán kính kích hoạt (m)").fill("260");
   await page.getByLabel("Cho phép thuyết minh theo vị trí").check();
   await page
-    .getByRole("dialog")
     .getByRole("button", { name: "Ngôn ngữ giao diện", exact: true })
     .click();
   await expect(page.getByLabel("Trigger radius (m)")).toHaveValue("260");
@@ -268,7 +268,7 @@ test("admin UI switch preserves unsaved radius; restore and cancel never write i
       .trigger_radius_m,
   ).toBe(100);
   await page.getByRole("button", { name, exact: true }).click();
-  await page.getByText("Advanced editing", { exact: true }).click();
+  await page.getByText("Edit location", { exact: true }).click();
   await page.getByLabel("Trigger radius (m)").fill("80");
   await page.getByLabel("Enable location narration").check();
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
@@ -393,27 +393,25 @@ test("admin supplements an existing place through worker protocol 3 and reviews 
     .getByRole("textbox", { name: "Tìm địa điểm, địa chỉ…" })
     .fill(name);
   await page.getByRole("button", { name, exact: true }).click();
-  await page
-    .getByRole("button", { name: "Bước 2: Nội dung đa ngôn ngữ", exact: true })
-    .click();
+  await page.locator("#editor-tab-1").click();
   const region = page.getByRole("region", {
     name: "Thuyết minh đa ngôn ngữ",
     exact: true,
   });
-  const row = region.getByRole("row").filter({ hasText: "Français" });
-  await expect(row.getByRole("checkbox")).not.toBeChecked();
+  await workerOnline(page);
+  await page.getByRole("tab").filter({ hasText: "Français" }).click();
+  const row = region;
+  await region.getByText("Tạo nhiều ngôn ngữ", { exact: true }).click();
   await expect(
-    region
-      .getByRole("row")
-      .filter({ hasText: "English" })
-      .getByRole("checkbox"),
+    region.getByLabel("Français", { exact: true }),
+  ).not.toBeChecked();
+  await expect(
+    region.getByLabel("English *", { exact: true }),
   ).not.toBeChecked();
   await region
     .getByLabel("Tôi đã xác minh và lưu nội dung nguồn tiếng Việt.")
     .check();
-  await row
-    .getByRole("button", { name: "AI bổ sung / thử lại", exact: true })
-    .click();
+  await row.getByRole("button", { name: "Tạo bằng AI", exact: true }).click();
   await expect(row).toContainText("Đang chờ máy AI");
   const workerHeaders = {
     "X-Requested-With": "Quan1Admin",
@@ -426,7 +424,7 @@ test("admin supplements an existing place through worker protocol 3 and reviews 
     })
   ).json();
   expect(claimed.job.payload.poi_id).toBe(saved.id);
-  const french =
+  let french =
     "Découvrez ce lieu à partir des informations vérifiées par notre équipe. Prenez le temps de regarder les détails et les espaces décrits dans le texte source. Cette présentation reste fidèle aux éléments enregistrés par les responsables et demande une vérification avant toute publication.";
   const completion = await page.request.post(
     `/api/v1/worker/jobs/${claimed.job.id}/complete`,
@@ -448,11 +446,30 @@ test("admin supplements an existing place through worker protocol 3 and reviews 
   await row
     .getByRole("button", { name: "Xem & chỉnh bản AI", exact: true })
     .click();
+  french +=
+    " Prenez le temps de découvrir ce lieu et de vérifier les informations avant votre visite.";
+  await region.locator(".ai-review textarea").fill(french);
+  await page.locator("#editor-tab-0").click();
+  await page.locator("#editor-tab-1").click();
+  await expect(region.locator(".ai-review textarea")).toHaveValue(french);
+  await region
+    .getByRole("button", { name: "Đóng so sánh", exact: true })
+    .click();
+  await row
+    .getByRole("button", { name: "Xem & chỉnh bản AI", exact: true })
+    .click();
+  await expect(region.locator(".ai-review textarea")).toHaveValue(french);
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await page
+    .locator(".editor-footer")
+    .getByRole("button", { name: "Hủy", exact: true })
+    .click();
+  await expect(region.locator(".ai-review textarea")).toHaveValue(french);
   await region
     .getByLabel("Tôi đã kiểm tra ngôn ngữ và thông tin của bản dịch.")
     .check();
   await region
-    .getByRole("button", { name: "Lưu bản dịch vào nháp", exact: true })
+    .getByRole("button", { name: "Dùng bản này vào nháp", exact: true })
     .click();
   await expect
     .poll(
@@ -466,6 +483,16 @@ test("admin supplements an existing place through worker protocol 3 and reviews 
     .toBe(french);
   // Persistence can finish before the apply response updates the review panel.
   await expect(region.locator(".ai-review")).toBeHidden();
+  const applied = await (
+    await page.request.get(`/api/v1/admin/pois/${saved.id}`)
+  ).json();
+  expect(applied.narration_review.fr.state).toBe("pending");
+  await expect(
+    page
+      .getByRole("tab")
+      .filter({ hasText: "Français" })
+      .locator(".language-review-symbol"),
+  ).toHaveText("○");
   const publicPoi = await (
     await page.request.get(`/api/v1/pois/${saved.id}?track_view=false`)
   ).json();
@@ -474,11 +501,12 @@ test("admin supplements an existing place through worker protocol 3 and reviews 
     "Existing English narration must stay.",
   );
   // Close the editor; the translation review has its own cancel action.
-  await page.locator(".editor-footer").getByRole("button", { name: "Hủy", exact: true }).click();
-  await page.getByRole("button", { name, exact: true }).click();
   await page
-    .getByRole("button", { name: "Bước 2: Nội dung đa ngôn ngữ", exact: true })
+    .locator(".editor-footer")
+    .getByRole("button", { name: "Hủy", exact: true })
     .click();
+  await page.getByRole("button", { name, exact: true }).click();
+  await page.locator("#editor-tab-1").click();
   await page.getByRole("tab").filter({ hasText: "Français" }).click();
   await expect(
     page.getByLabel("Bài thuyết minh", { exact: false }),
@@ -567,13 +595,17 @@ test("GPS errors do not interrupt manual narration; turning off preserves manual
     .getByRole("button", { name: "Bật thuyết minh theo vị trí", exact: true })
     .click();
   await page.evaluate(() => (window as any).__gps.fail(1));
-  await expect(page.locator(".gps-controls").getByRole("status")).toContainText("chưa cấp quyền");
+  await expect(page.locator(".gps-controls").getByRole("status")).toContainText(
+    "chưa cấp quyền",
+  );
   await page.locator('.place-pin[title="GPS narration test"]').click();
   await page
     .getByRole("button", { name: "Nghe thuyết minh", exact: true })
     .click();
   await page.evaluate(() => (window as any).__gps.fail(3));
-  await expect(page.locator(".gps-controls").getByRole("status")).toContainText("quá thời gian");
+  await expect(page.locator(".gps-controls").getByRole("status")).toContainText(
+    "quá thời gian",
+  );
   await page
     .getByRole("button", { name: "Tắt thuyết minh theo vị trí", exact: true })
     .click();
@@ -688,26 +720,40 @@ test("hidden tab and stale samples cannot qualify dwell; visible tab needs fresh
     .toBe(1);
 });
 
-test("search with no matching pins keeps GPS scope and explains dwell and missing content", async ({ page }) => {
+test("search with no matching pins keeps GPS scope and explains dwell and missing content", async ({
+  page,
+}) => {
   await mockSpeech(page);
   await fixture(page);
   await page.clock.install();
   await page.goto(origin);
-  await page.getByRole("textbox", { name: "Tìm địa điểm", exact: true }).fill("không tìm thấy");
+  await page
+    .getByRole("textbox", { name: "Tìm địa điểm", exact: true })
+    .fill("không tìm thấy");
   await page.getByRole("button", { name: "Bản đồ", exact: true }).click();
   await expect(page.locator(".place-pin")).toHaveCount(0);
-  await page.getByRole("button", { name: "Bật thuyết minh theo vị trí", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Bật thuyết minh theo vị trí", exact: true })
+    .click();
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.evaluate(() => (window as any).__gps.emit(Number.NaN));
-  await expect(page.locator(".gps-controls").getByRole("status")).toContainText("Chưa xác định");
+  await expect(page.locator(".gps-controls").getByRole("status")).toContainText(
+    "Chưa xác định",
+  );
   expect(errors).toEqual([]);
   await page.evaluate(() => (window as any).__gps.emit(5, 106.72));
-  await expect(page.locator(".gps-controls").getByRole("status")).toContainText("Chưa có địa điểm đủ gần");
+  await expect(page.locator(".gps-controls").getByRole("status")).toContainText(
+    "Chưa có địa điểm đủ gần",
+  );
   await page.evaluate(() => (window as any).__gps.emit());
-  await expect(page.locator(".gps-controls").getByRole("status")).toContainText("Đang xác nhận");
+  await expect(page.locator(".gps-controls").getByRole("status")).toContainText(
+    "Đang xác nhận",
+  );
   await page.clock.runFor(5000);
   await page.evaluate(() => (window as any).__gps.emit());
-  await expect.poll(() => page.evaluate(() => (window as any).__speech.calls.length)).toBe(1);
+  await expect
+    .poll(() => page.evaluate(() => (window as any).__speech.calls.length))
+    .toBe(1);
   await expect(page.locator(".map-card")).toContainText(poi.name);
 });

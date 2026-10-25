@@ -49,8 +49,8 @@ export const messages = {
     next: "Trang sau",
     loading: "Đang tải nội dung…",
     retry: "Thử lại",
-    guideTitle: "Một địa điểm, bốn bước đơn giản",
-    guideDesc: "Thêm thông tin → Viết thuyết minh → Nghe thử → Công bố.",
+    guideTitle: "Biên tập địa điểm trong ba tab",
+    guideDesc: "Thông tin địa điểm → Thuyết minh & nghe thử → Kiểm tra, duyệt & công bố.",
     seeGuide: "Xem hướng dẫn",
     demo: "Dữ liệu mẫu",
     demoDesc:
@@ -105,7 +105,7 @@ export const messages = {
     step3desc:
       "Nghe văn bản bằng text-to-speech; chọn giọng đọc và tốc độ trên thiết bị.",
     step4: "Kiểm tra & công bố",
-    step4desc: "Xem trước, chọn Nháp / Công bố / Ẩn ở bước 1 rồi lưu thay đổi.",
+    step4desc: "Lưu nháp, gửi duyệt, xác nhận duyệt rồi công bố phiên bản hiện tại.",
     settingsSaved: "Lựa chọn được tự động lưu trên thiết bị này.",
     goTo: "Đi đến nội dung chính",
   },
@@ -160,9 +160,9 @@ export const messages = {
     next: "Next page",
     loading: "Loading content…",
     retry: "Try again",
-    guideTitle: "One place, four simple steps",
+    guideTitle: "Edit places in three tabs",
     guideDesc:
-      "Add details → Write narration → Preview speech → Submit for review.",
+      "Place details → Narration & speech preview → Review, approve & publish.",
     seeGuide: "View guide",
     demo: "Sample data",
     demoDesc:
@@ -218,7 +218,7 @@ export const messages = {
       "Listen with text-to-speech; choose an available device voice and reading speed.",
     step4: "Check & publish",
     step4desc:
-      "Preview, select Draft / Published / Hidden in step 1 and save changes.",
+      "Save a draft, submit it, confirm approval and publish the current revision.",
     settingsSaved: "Preferences are saved automatically on this device.",
     goTo: "Skip to main content",
   },

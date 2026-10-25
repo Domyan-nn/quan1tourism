@@ -106,7 +106,7 @@ test("admin adds a language and it appears in the editor and visitor selector", 
     .fill("Dinh Độc Lập");
   await page.getByRole("button", { name: "Dinh Độc Lập", exact: true }).click();
   await page
-    .getByRole("button", { name: "Bước 2: Nội dung đa ngôn ngữ", exact: true })
+    .locator("#editor-tab-1")
     .click();
   await page.getByRole("tab").filter({ hasText: nativeName }).click();
   await expect(

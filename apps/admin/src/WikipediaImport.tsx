@@ -251,7 +251,13 @@ export function WikipediaImport({
                 ? "Waiting for your AI computer. Reloading will resume this request."
                 : "Generating a draft for administrator review…"
             : status
-              ? `${status.model} · ${status.ready ? (vi ? "Sẵn sàng" : "Ready") : vi ? "Máy AI chưa sẵn sàng; kiểm tra kết nối và model." : "AI worker unavailable; check its connection and model."}`
+              ? status.ready
+                ? vi
+                  ? "Sẵn sàng"
+                  : "Ready"
+                : vi
+                  ? "Máy AI chưa sẵn sàng; kiểm tra kết nối và model."
+                  : "AI worker unavailable; check its connection and model."
               : vi
                 ? "Đang kiểm tra AI local…"
                 : "Checking local AI…"}
@@ -269,14 +275,20 @@ export function WikipediaImport({
           </button>
         )}
       </div>
-      {generating && jobTimings && (
-        <p className="field-hint" role="status">
-          {vi ? "Đã chờ" : "Queue wait"}:{" "}
-          {Math.round(jobTimings.queue_wait_seconds ?? 0)}s
-          {jobTimings.generation_seconds != null &&
-            ` · ${vi ? "Đang xử lý" : "Processing"}: ${Math.round(jobTimings.generation_seconds)}s`}
-        </p>
-      )}
+      <details>
+        <summary>
+          {vi ? "Chi tiết kỹ thuật AI" : "AI technical details"}
+        </summary>
+        <p>{status?.model || "—"}</p>
+        {generating && jobTimings && (
+          <p className="field-hint" role="status">
+            {vi ? "Đã chờ" : "Queue wait"}:{" "}
+            {Math.round(jobTimings.queue_wait_seconds ?? 0)}s
+            {jobTimings.generation_seconds != null &&
+              ` · ${vi ? "Đang xử lý" : "Processing"}: ${Math.round(jobTimings.generation_seconds)}s`}
+          </p>
+        )}
+      </details>
       {error && (
         <p className="notice error" role="alert">
           {uiMessage(error, vi ? "vi" : "en")}

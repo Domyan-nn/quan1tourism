@@ -1,3 +1,4 @@
+import { workerOnline } from "./editor-helpers";
 import { readFileSync } from "node:fs";
 import { test, expect } from "./fixtures";
 import { mockSpeech } from "./speech";
@@ -6,8 +7,8 @@ const corpus = JSON.parse(readFileSync("tests/fixtures/translation-corpus.json",
 const headers = { "X-Requested-With": "Quan1Admin" };
 const workerHeaders = { ...headers, Authorization: "Bearer isolated-e2e-worker-credential-only" };
 
-test("narration table fits its editor and approval markers follow saved content and pending jobs", async ({ page }, info) => {
-  test.setTimeout(120000);
+test("active narration workspace fits its page and approval markers follow saved content and pending jobs", async ({ page }, info) => {
+  test.setTimeout(180000);
   await mockSpeech(page);
   await page.goto("/admin/");
   await page.getByRole("button", { name: "Trải nghiệm tài khoản demo", exact: true }).click();
@@ -21,6 +22,7 @@ test("narration table fits its editor and approval markers follow saved content 
   expect(response.status()).toBe(201);
   let poi = await response.json();
   async function generate(code: string, replace = false) {
+    await workerOnline(page);
     const queued = await page.request.post(`/api/v1/admin/pois/${poi.id}/narration-jobs`, {
       headers, data: { revision: poi.revision, confirmed_source: true, language_codes: [code], replace_existing: replace },
     });
@@ -43,7 +45,7 @@ test("narration table fits its editor and approval markers follow saved content 
   await page.reload();
   await page.getByRole("textbox", { name: "Tìm địa điểm, địa chỉ…" }).fill(name);
   await page.getByRole("button", { name, exact: true }).click();
-  await page.getByRole("button", { name: "Bước 2: Nội dung đa ngôn ngữ", exact: true }).click();
+  await page.locator("#editor-tab-1").click();
   const region = page.locator(".translation-supplement");
   const viTab = page.getByRole("tab").filter({ hasText: "Tiếng Việt" });
   const enTab = page.getByRole("tab").filter({ hasText: "English" });
@@ -53,7 +55,10 @@ test("narration table fits its editor and approval markers follow saved content 
   await expect(enTab.locator(".language-review-symbol")).toHaveText("✓");
   await expect(frTab.locator(".language-review-symbol")).toHaveText("○");
   await expect(deTab.locator(".language-review-symbol")).toHaveText("");
-  await expect(region.getByRole("row").filter({ hasText: "Français" })).toContainText("Bản AI chưa duyệt");
+  await frTab.click();
+  await expect(region).toContainText("Bản AI chưa duyệt");
+  await region.getByText("Chi tiết kỹ thuật AI", { exact: true }).click();
+  await expect(region.getByText(/a-long-model-name-without-any-spaces-/)).toBeVisible();
   // Browser zoom reduces the effective CSS viewport. Model 125% with a
   // correspondingly smaller viewport; CSS zoom does not update media queries.
   for (const width of [1366, 1440, 1920, 768, 390]) {
@@ -64,7 +69,7 @@ test("narration table fits its editor and approval markers follow saved content 
       }, enlarged);
       await expect.poll(async () => page.evaluate(() => {
         const nodes = [document.documentElement, ...document.querySelectorAll<HTMLElement>(
-          ".editor-body, .translation-supplement, .narration-language-table, .narration-row-actions")];
+          ".editor-body, .translation-supplement, .narration-workspace, .narration-active")];
         return nodes.filter((node) => node.scrollWidth > node.clientWidth + 1).map((node) => ({
           name: node.className || "html", scroll: node.scrollWidth, client: node.clientWidth,
           children: Array.from(document.querySelectorAll<HTMLElement>("body *")).map((child) => ({
@@ -72,8 +77,8 @@ test("narration table fits its editor and approval markers follow saved content 
           })).filter((child) => child.right > innerWidth + 1).slice(0, 12),
         }));
       })).toEqual([]);
-      const actions = region.getByRole("row").filter({ hasText: "Français" });
-      for (const label of ["Xem / chỉnh sửa", "Nghe thử", "AI bổ sung / thử lại", "Xem & chỉnh bản AI"]) {
+      const actions = region;
+      for (const label of ["Tạo bằng AI", "Xem & chỉnh bản AI"]) {
         await actions.getByRole("button", { name: label, exact: true }).scrollIntoViewIfNeeded();
         await expect(actions.getByRole("button", { name: label, exact: true })).toBeInViewport();
       }
@@ -83,7 +88,7 @@ test("narration table fits its editor and approval markers follow saved content 
         if (width === 1440 || width === 390) {
           await actions.scrollIntoViewIfNeeded();
           await page.screenshot({ path: `.runtime/screenshots/narration-review-ai-${info.project.name}-${width}.png`, fullPage: true });
-          await page.locator(".editor-fields > .language-tabs").scrollIntoViewIfNeeded();
+          await page.locator(".narration-workspace > .language-tabs").scrollIntoViewIfNeeded();
           await page.screenshot({ path: `.runtime/screenshots/narration-review-tabs-${info.project.name}-${width}.png`, fullPage: true });
         }
       }
@@ -94,14 +99,15 @@ test("narration table fits its editor and approval markers follow saved content 
   await generate("en", true);
   await expect(enTab.locator(".language-review-symbol")).toHaveText("○");
   await expect(enTab).toHaveAttribute("title", "Có bản AI mới chưa duyệt; bản đã duyệt trước vẫn được giữ.");
-  await region.getByRole("row").filter({ hasText: "English" }).getByRole("button", { name: "Bỏ bản AI mới", exact: true }).click();
+  await enTab.click();
+  await region.getByRole("button", { name: "Bỏ đề xuất", exact: true }).click();
   await expect(enTab.locator(".language-review-symbol")).toHaveText("✓");
   await enTab.click();
   const narration = page.locator(".narration-input");
   await narration.fill("A manually edited draft waiting for approval.");
   await expect(enTab.locator(".language-review-symbol")).toHaveText("○");
-  await expect(region.getByRole("row").filter({ hasText: "English" })).toContainText("Thủ công");
-  await page.getByRole("dialog").getByRole("button", { name: "Ngôn ngữ giao diện", exact: true }).click();
+  await expect(region).toContainText("Bản nháp chưa duyệt");
+  await page.getByRole("button", { name: "Ngôn ngữ giao diện", exact: true }).click();
   await expect(narration).toHaveValue("A manually edited draft waiting for approval.");
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
   await expect(page.getByText("Changes saved.", { exact: true })).toBeVisible();
@@ -118,7 +124,7 @@ test("narration table fits its editor and approval markers follow saved content 
     name: poi.name, address: poi.address, category_id: poi.category_id, revision: poi.revision,
     status: "published", translations,
   } })).status()).toBe(200);
-  await expect(region.getByRole("alert")).toContainText("changed in another session");
+  await expect(region.getByRole("alert")).toContainText("The revision changed");
   await expect(enTab.locator(".language-review-symbol")).toHaveText("○");
   await expect(narration).toHaveValue("A manually edited draft waiting for approval.");
 });

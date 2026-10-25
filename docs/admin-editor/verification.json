@@ -1,0 +1,53 @@
+{
+  "head": "76bfdd3",
+  "backend": {
+    "passed": 262,
+    "skipped": 6,
+    "ruff": "passed"
+  },
+  "frontend": {
+    "typecheck": "passed",
+    "narrationUnitTests": 18,
+    "categoryUnitTests": 1,
+    "formatting": "passed",
+    "buildExitCode": 0
+  },
+  "e2e": {
+    "full": {
+      "startTime": "2026-10-25T13:05:02.477Z",
+      "duration": 315089.42699999997,
+      "expected": 96,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    },
+    "aiAfterLabelCorrection": {
+      "startTime": "2026-10-25T13:11:48.509Z",
+      "duration": 85978.564,
+      "expected": 8,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    },
+    "responsiveSaveState": {
+      "startTime": "2026-10-25T13:14:12.379Z",
+      "duration": 35266.151,
+      "expected": 2,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    },
+    "expandedModelDetails": {
+      "startTime": "2026-10-25T13:15:52.098Z",
+      "duration": 35671.895,
+      "expected": 2,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    }
+  },
+  "limitations": [
+    "Speech, GPS and model output are simulated in browser tests; no claim of real device or Ollama verification.",
+    "External storage, live Wikipedia and environment-dependent backend tests are not verified."
+  ]
+}

@@ -1,3 +1,4 @@
+import { publishDraft } from "./editor-helpers";
 import { type Page } from "@playwright/test";
 import { test, expect, offline } from "./fixtures";
 import { mockSpeech } from "./speech";
@@ -49,7 +50,7 @@ test("admin position changes stay local until save, restore and cancel discard t
     .fill(name);
   await page.getByRole("button", { name, exact: true }).click();
   await expect(page.locator(".location-editor")).toHaveCount(0);
-  await page.getByText("Chỉnh sửa nâng cao", { exact: true }).click();
+  await page.getByText("Chỉnh vị trí", { exact: true }).click();
   await expect(page.getByLabel("Vĩ độ", { exact: true })).toHaveValue("10.779");
   await page.locator(".place-map").click({ position: { x: 125, y: 110 } });
   await expect(page.getByLabel("Vĩ độ", { exact: true })).not.toHaveValue(
@@ -91,10 +92,8 @@ test("admin position changes stay local until save, restore and cancel discard t
     .getByRole("button", { name: "Vị trí tìm được", exact: true })
     .click();
   await expect(page.getByLabel("Vĩ độ", { exact: true })).toHaveValue("10.782");
-  await page
-    .getByRole("dialog")
-    .getByRole("button", { name: "Xem trước", exact: true })
-    .click();
+  await page.locator("#editor-tab-2").click();
+  await page.getByRole("button", { name: "Xem trước bản nháp", exact: true }).click();
   await page
     .getByRole("button", { name: "Nghe thuyết minh", exact: true })
     .click();
@@ -104,7 +103,7 @@ test("admin position changes stay local until save, restore and cancel discard t
   await page.getByRole("button", { name: "Hủy", exact: true }).click();
   expect((await read(page, poi.id)).latitude).toBe(10.779);
   await page.getByRole("button", { name, exact: true }).click();
-  await page.getByText("Chỉnh sửa nâng cao", { exact: true }).click();
+  await page.getByText("Chỉnh vị trí", { exact: true }).click();
   await page.getByLabel("Vĩ độ", { exact: true }).fill("10.781");
   await page.getByLabel("Kinh độ", { exact: true }).fill("106.702");
   await page.locator('input[type="file"]').setInputFiles({
@@ -128,9 +127,9 @@ test("admin position changes stay local until save, restore and cancel discard t
     listen_count: 0,
   });
   expect((await read(page, poi.id)).image_id).not.toBeNull();
-  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Quay lại danh sách", exact: true }).click();
   await page.getByRole("button", { name, exact: true }).click();
-  await page.getByText("Chỉnh sửa nâng cao", { exact: true }).click();
+  await page.getByText("Chỉnh vị trí", { exact: true }).click();
   await expect(page.getByLabel("Vĩ độ", { exact: true })).toHaveValue("10.781");
   await page.screenshot({
     path: `.runtime/screenshots/location-editor-${info.project.name}.png`,
@@ -169,19 +168,7 @@ test("admin can publish a place left in the legacy review workflow", async ({
     .getByRole("textbox", { name: "Tìm địa điểm, địa chỉ…" })
     .fill(name);
   await page.getByRole("button", { name, exact: true }).click();
-  await page
-    .getByRole("button", { name: "Bước 1: Thông tin địa điểm", exact: true })
-    .click();
-  await expect(
-    page.getByLabel("Trạng thái hiển thị", { exact: true }),
-  ).toHaveValue("in_review");
-  await page
-    .getByLabel("Trạng thái hiển thị", { exact: true })
-    .selectOption("published");
-  await page.getByRole("button", { name: "Lưu thay đổi", exact: true }).click();
-  await expect(
-    page.getByText("Đã lưu thay đổi.", { exact: true }),
-  ).toBeVisible();
+  await publishDraft(page);
   expect((await read(page, poi.id)).status).toBe("published");
 });
 
