@@ -6,6 +6,8 @@ COPY apps/web/package.json apps/web/package.json
 COPY apps/mobile/package.json apps/mobile/package.json
 COPY packages/api-client/package.json packages/api-client/package.json
 COPY packages/contracts/package.json packages/contracts/package.json
+COPY scripts/security-audit.mjs scripts/security-audit.mjs
+COPY security/node-forge-1.4.0.json security/node-forge-1.4.0.json
 RUN npm ci && npm ls --workspace @quan1/mobile expo react-native --depth=0
 COPY apps ./apps
 COPY packages ./packages

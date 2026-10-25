@@ -33,9 +33,28 @@ Audit còn **4 mục high**, cùng bắt nguồn từ `node-forge@1.4.0`:
 hiện chưa công bố bản vá; npm registry vẫn có bản mới nhất 1.4.0 khi kiểm tra.
 Zod được vá theo [GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5).
 
-Giữ `npm audit --audit-level=high` và Quality gate. **Security vẫn chặn release**
+Ở commit `6e3fae9`, giữ `npm audit --audit-level=high` và Quality gate. **Security vẫn chặn release**
 cho đến khi có dependency đã vá hoặc quyết định chấp nhận rủi ro được phê duyệt.
 Không dùng `npm audit fix --force`: đề xuất hiện tại hạ Expo về SDK 44.
+
+## Bản vá cục bộ tiếp theo
+
+Run [40171020073](https://github.com/Domyan-nn/quan1tourism/actions/runs/40171020073)
+xác nhận Built artifact E2E đã thành công; chỉ Security thất bại và kéo theo Quality gate.
+
+Đã backport kiểm tra số phần tử DigestAlgorithm từ
+[upstream PR #1152](https://github.com/digitalbazaar/forge/pull/1152), chưa merge/phát hành.
+`npm ci` tự áp dụng bản vá có khóa version và SHA256. Test tái hiện chữ ký có phần tử
+thừa bị bản gốc chấp nhận, kiểm tra bản vá từ chối, và kiểm tra chữ ký/chứng chỉ Expo hợp lệ.
+
+CI dùng `npm run audit:security`: vẫn gọi npm audit thật, nhưng chỉ chấp nhận advisory
+trên nếu xác minh được bản vá ở đúng installation mà Expo đang dùng. Advisory mới,
+bản node-forge khác chưa vá, code bị sửa hoặc lỗi registry vẫn làm Security thất bại.
+`npm audit` nguyên bản tiếp tục báo 4 high vì không kiểm tra thay đổi source cục bộ.
+Chi tiết cách kiểm tra và gỡ backport: [security/README.md](../security/README.md).
+
+Quality gate vẫn yêu cầu tất cả job thành công; thông báo lỗi giờ nêu rõ job nào
+failed/cancelled/skipped thay vì chỉ báo một AssertionError chung.
 
 ## Kiểm tra lại
 
@@ -47,7 +66,10 @@ Kiểm chứng local trên Windows, Node 22.22.0:
   Lượt kiểm tra lặp trước đó đạt 6/6.
 - `test:qr:ui`: 8/8; mobile logic: 11/11; QR URL: 2/2.
 - `expo install --check` và export Android với lockfile cuối: đạt.
-- Audit cuối: 4 high, 0 moderate; vẫn exit 1 theo ngưỡng CI hiện tại.
+- Trước backport: npm audit có 4 high, 0 moderate và exit 1.
+- Sau backport: cài sạch tự áp dụng đúng SHA256; `audit:security` đạt, gồm 6/6 test
+  RSA/chứng chỉ Expo/chính sách audit. `test:tooling` đạt 2/2; pip-audit không tìm thấy
+  lỗ hổng đã biết trong dependency Python được kiểm tra trên máy local.
 
 ```powershell
 npm.cmd ci
@@ -55,6 +77,7 @@ npm.cmd run test:tooling
 npm.cmd run typecheck
 npm.cmd run test:e2e -- --grep "admin supplements an existing place" --repeat-each 3
 npm.cmd audit --audit-level=high
+npm.cmd run audit:security
 ```
 
 Sau khi push, cần xem một CI run mới trên Ubuntu. Sửa local không thay đổi kết quả

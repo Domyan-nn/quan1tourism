@@ -44,6 +44,12 @@ GHSA-4qv8-2p9j-2685, GHSA-f72v-6w45-q472 và GHSA-xjj6-f33q-929c trong dependenc
 của Miniflare. Giữ Wrangler 4.152.0; không dùng `npm audit fix --force` để hạ Wrangler.
 Khi nâng Wrangler/Miniflare, kiểm tra lại override và chỉ bỏ khi dependency upstream đã có bản vá.
 uv.lock nâng Pillow lên 13.0.0 để sửa advisory phát hiện khi audit.
+Security chạy `npm run audit:security`: npm audit thật và kiểm tra bản vá source
+`node-forge@1.4.0` cho GHSA-86w9-cpqp-85rv chưa có release chính thức.
+Chỉ advisory này và chuỗi Expo hiện có được chấp nhận khi version/SHA256/consumer
+resolution và test RSA/Expo đều đạt; mọi high/critical khác tiếp tục chặn gate.
+`npm ci` áp dụng backport qua postinstall, kể cả Docker build.
+Xem [bản vá, điều kiện chặn và cách gỡ](../security/README.md).
 Playwright cài Chromium bằng `npx playwright install --with-deps chromium`; không phụ thuộc Edge.
 Playwright phục vụ `apps/web/dist` và `/admin/`, không dùng Vite dev server. HTTP ngoài loopback,
 tile, ảnh và TTS được mock; backend tests cấm socket HTTP ngoài loopback.

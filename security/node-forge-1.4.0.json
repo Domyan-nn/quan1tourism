@@ -1,0 +1,12 @@
+{
+  "package": "node-forge",
+  "version": "1.4.0",
+  "advisory": "https://github.com/advisories/GHSA-86w9-cpqp-85rv",
+  "upstream": "https://github.com/digitalbazaar/forge/pull/1152",
+  "upstreamCommit": "ceba34402e329f0365134f23fe19898756527d65",
+  "file": "lib/rsa.js",
+  "originalSha256": "fd4740238145ec26470eb3f06a627c72039538ce1307dbdce40521f94dfd0a50",
+  "patchedSha256": "c9b1e3799e230528b6d6815c1f6cd3c6058b9d45975264b55d995abb976589af",
+  "before": "            obj.value.length !== 2) {",
+  "after": "            obj.value.length !== 2 ||\n            obj.value[0].value.length !==\n              (('parameters' in capture) ? 2 : 1)) {"
+}

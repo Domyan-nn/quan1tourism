@@ -7,6 +7,9 @@
     "packages/*"
   ],
   "scripts": {
+    "postinstall": "node scripts/security-audit.mjs patch",
+    "test:security": "node --test tests/security-audit.test.mjs",
+    "audit:security": "npm run test:security && node scripts/security-audit.mjs audit",
     "start:local": "node scripts/dev.mjs",
     "dev": "npm run dev --workspace @quan1/admin",
     "dev:web": "npm run dev --workspace @quan1/web",

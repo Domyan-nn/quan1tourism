@@ -173,7 +173,8 @@ jobs:
           -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=/repo
           ghcr.io/gitleaks/gitleaks:v8.24.3 git /repo --redact --no-banner
       - run: npm ci
-      - run: npm audit --audit-level=high
+      - name: Audit dependencies and verify node-forge RSA backport
+        run: npm run audit:security
       - run: mkdir -p .runtime
       - run: uv export --frozen --no-dev --no-emit-project --output-file ../../.runtime/requirements-audit.txt > /dev/null
         working-directory: services/backend
@@ -189,7 +190,8 @@ jobs:
           python - <<'PY'
           import json, os
           results = json.loads(os.environ['RESULTS'])
-          assert all(job['result'] == 'success' for job in results.values()), 'A required job failed, was cancelled or skipped'
+          failed = {name: job['result'] for name, job in results.items() if job['result'] != 'success'}
+          assert not failed, f'Required jobs did not succeed: {failed}'
           PY
         env:
           RESULTS: ${{ toJSON(needs) }}
