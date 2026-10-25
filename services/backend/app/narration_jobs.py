@@ -1,8 +1,5 @@
 """One durable queue item per locale. Results stay private until explicit review and save."""
 
-import hashlib
-import json
-
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select, func
@@ -14,35 +11,13 @@ from .languages import languages
 from .models import AiJob, Poi, now
 from .schemas import TranslationInput
 from .ai_policy import enforce_translation_policy, job_progress, translation_policy
-from .translation_validation import validate_translation, VALIDATOR_VERSION, safe_error
+from .translation_validation import VALIDATOR_VERSION, safe_error
+from .narration_review import (
+    jobs_for, job_matches, review_states, source_data, source_hash, translation_hash, validate_job_translation,
+)
 
 router = APIRouter(prefix="/api/v1/admin/pois")
 administrator = require("admin")
-
-
-def fingerprint(value):
-    return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
-
-
-def translation_hash(value):
-    return fingerprint({"title": value.get("title", ""), "text": value.get("text", "")})
-
-
-def source_data(poi):
-    return {"name": poi.name or "", "address": poi.address or "",
-            "short_description": poi.short_description or "", "source": poi.source,
-            "source_locale": "vi", "source_title": (poi.translations or {}).get("vi", {}).get("title", ""),
-            "source_text": (poi.translations or {}).get("vi", {}).get("text", "")}
-
-
-def source_hash(poi):
-    return fingerprint(source_data(poi))
-
-
-def validate_job_translation(payload, translation):
-    source = payload.get("source", {})
-    return validate_translation(source.get("source_text", ""), source.get("source_locale", "vi"),
-        translation, payload["locale"], protected_terms=(source.get("name", ""), source.get("address", "")))
 
 
 class GenerateInput(BaseModel):
@@ -53,12 +28,7 @@ class GenerateInput(BaseModel):
     confirmed_source: bool = False
 
 
-def jobs_for(db, poi_id):
-    return list(db.scalars(select(AiJob).where(AiJob.payload["kind"].as_string() == "supplement",
-        AiJob.payload["poi_id"].as_string() == poi_id).order_by(AiJob.created_at.desc()).limit(500)))
-
-
-def summary(job):
+def summary(job, poi=None):
     execution = job.payload.get("execution", {})
     validation = execution.get("validation")
     if job.status == "completed" and job.result:
@@ -67,11 +37,18 @@ def summary(job):
     codes = list(dict.fromkeys(safe_error(code) for code in (
         execution.get("issue_codes", []) + (validation["issues"] if validation else [])
         + ([job.error] if job.error else []))))
+    if poi is not None:
+        if job.payload.get("source_hash") != source_hash(poi):
+            codes.append("source_changed")
+        if job.payload.get("target_hash") != translation_hash(poi.translations.get(job.payload["locale"], {})):
+            codes.append("target_changed")
     return {"id": job.id, "locale": job.payload["locale"], "status": job.status,
             "error": safe_error(job.error) if job.error else "", "result": job.result,
             "source_revision": job.payload["source_revision"], "validation": validation,
             "issue_codes": codes,
-            "reviewable": bool(job.status == "completed" and validation and validation["status"] == "passed"),
+            "reviewable": bool(job.status == "completed" and validation and validation["status"] == "passed"
+                               and not (job.result or {}).get("discarded_at")
+                               and (poi is None or job_matches(job, poi))),
             "timings": job_progress(job)}
 
 
@@ -81,8 +58,9 @@ def list_jobs(poi_id: str, db=Depends(get_db), user=Depends(administrator)):
     from .ai_jobs import expire_jobs, queue_status
 
     expire_jobs(db)
-    return {"items": [{**summary(job), "source_changed": job.payload["source_hash"] != source_hash(poi)}
-                      for job in jobs_for(db, poi_id)], "policy": translation_policy(),
+    jobs = jobs_for(db, poi_id)
+    return {"poi_revision": poi.revision, "items": [{**summary(job, poi), "source_changed": job.payload["source_hash"] != source_hash(poi)}
+                      for job in jobs], "narration_review": review_states(poi, db, jobs), "policy": translation_policy(),
             "worker_ready": queue_status(db)["ready"]}
 
 
@@ -149,6 +127,8 @@ def apply(poi_id: str, job_id: str, data: ApplyInput, db=Depends(get_db), user=D
     job = db.get(AiJob, job_id)
     if not job or job.payload.get("poi_id") != poi.id or job.status != "completed" or not job.result:
         raise HTTPException(409, "No completed translation to review")
+    if job.result.get("applied_at") or job.result.get("discarded_at"):
+        raise HTTPException(409, "This result was already applied or discarded")
     payload = job.payload
     code = payload["locale"]
     if not any(item.code == code for item in languages(db, enabled_only=True)):
@@ -172,5 +152,28 @@ def apply(poi_id: str, job_id: str, data: ApplyInput, db=Depends(get_db), user=D
     job.result = {**job.result, "applied_at": now().isoformat(), "validation": validation.to_dict()}
     touch(poi)
     audit(db, user, poi, "ai_translation_save", code)
+    db.commit()
+    return serialize(poi, db, statistics=True)
+
+
+class DiscardInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    revision: int = Field(ge=1)
+
+
+@router.post("/{poi_id}/narration-jobs/{job_id}/discard")
+def discard(poi_id: str, job_id: str, data: DiscardInput, db=Depends(get_db), user=Depends(administrator)):
+    poi = db.scalar(select(Poi).where(Poi.id == poi_id).with_for_update())
+    if not poi:
+        raise HTTPException(404, "Place not found")
+    check_revision(poi, data.revision)
+    job = db.get(AiJob, job_id)
+    if not job or job.payload.get("poi_id") != poi.id or job.status != "completed" or not job.result:
+        raise HTTPException(409, "No completed translation to discard")
+    if job.result.get("applied_at") or job.result.get("discarded_at"):
+        raise HTTPException(409, "This result was already applied or discarded")
+    job.result = {**job.result, "discarded_at": now().isoformat()}
+    touch(poi)
+    audit(db, user, poi, "ai_translation_discard", job.payload["locale"])
     db.commit()
     return serialize(poi, db, statistics=True)

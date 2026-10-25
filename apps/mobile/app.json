@@ -1,0 +1,16 @@
+{
+  "expo": {
+    "name": "Saigon Stories",
+    "slug": "quan1-stories",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": { "supportsTablet": true },
+    "plugins": ["expo-secure-store", ["expo-location", {
+      "locationWhenInUsePermission": "Cho phép Saigon Stories dùng vị trí khi bạn bật GPS để tìm và nghe câu chuyện gần bạn.",
+      "isIosBackgroundLocationEnabled": false,
+      "isAndroidBackgroundLocationEnabled": false,
+      "isAndroidForegroundServiceEnabled": false
+    }]]
+  }
+}

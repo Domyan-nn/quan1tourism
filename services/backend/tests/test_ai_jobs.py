@@ -57,6 +57,8 @@ def test_worker_queue_roundtrip_is_private_durable_and_never_publishes(env, upst
     login(client, "admin")
     created = client.post("/api/v1/admin/pois", json=result["result"]["draft"])
     assert created.status_code == 201
+    assert created.json()["narration_review"]["en"]["state"] == "pending"
+    assert created.json()["narration_review"]["en"]["source"] == "ai"
     poi = action(client, created.json(), "submit").json()
     assert action(client, poi, "approve", confirmed_review=False).status_code == 422
     poi = action(client, poi, "approve").json()

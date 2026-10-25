@@ -746,6 +746,9 @@ h1 {
 }
 .table-scroll {
   overflow-x: auto;
+  position: relative;
+  min-width: 0;
+  max-width: 100%;
 }
 table {
   width: 100%;
@@ -3664,10 +3667,59 @@ th {
   min-width: 0;
 }
 .editor-footer > div { flex-wrap: wrap; min-width: 0; max-width: 100%; }
-.translation-supplement table { display: block; overflow-x: auto; width: 100%; margin: 16px 0; }
-.translation-supplement th, .translation-supplement td { padding: 12px; text-align: start; vertical-align: top; }
-.translation-supplement .button { margin: 4px; white-space: normal; }
+.editor-fields, .editor-fields fieldset { min-width: 0; }
+.translation-supplement { container-type: inline-size; overflow-wrap: anywhere; }
+.translation-supplement .narration-language-table {
+  display: table;
+  table-layout: fixed;
+  width: 100%;
+  max-width: 100%;
+  margin: 16px 0;
+  white-space: normal;
+}
+.translation-supplement th, .translation-supplement td {
+  padding: 12px 8px;
+  text-align: start;
+  vertical-align: top;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font-size: 0.85rem;
+}
+.narration-language-table th:nth-child(1) { width: 25%; }
+.narration-language-table th:nth-child(2) { width: 34%; }
+.narration-language-table th:nth-child(3) { width: 41%; }
+.translation-supplement .button {
+  margin: 0;
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  min-height: 42px;
+}
+.translation-supplement > .button { margin: 4px 8px 4px 0; }
 .translation-supplement label { line-height: 1.6; }
+.narration-language-choice { display: flex; align-items: start; gap: 8px; }
+.narration-language-choice input { flex: 0 0 auto; margin-top: 5px; }
+.narration-language-choice span { min-width: 0; }
+.narration-language-choice strong { display: block; }
+.narration-row-actions { display: flex; flex-wrap: wrap; align-items: start; gap: 8px; min-width: 0; }
+.narration-row-actions .button { flex: 1 1 130px; }
+.narration-review-status { margin: 0 0 6px; font-weight: 600; }
+.narration-status-detail { display: block; margin: 6px 0; line-height: 1.6; }
+.editor-fields > .language-tabs { gap: 4px 12px; margin-bottom: 8px; }
+.editor-fields > .language-tabs > button { min-width: 0; max-width: 100%; overflow-wrap: anywhere; gap: 6px; }
+.language-review-symbol { display: inline-block; flex: 0 0 1.1em; width: 1.1em; text-align: center; font-size: 1.1em; }
+.language-review-legend { margin: 0 0 20px; font-size: 0.8rem; line-height: 1.7; color: #536747; }
+@container (max-width: 620px) {
+  .translation-supplement .narration-language-table,
+  .narration-language-table tbody,
+  .narration-language-table tr,
+  .translation-supplement .narration-language-table td { display: block; width: 100%; }
+  .narration-language-table thead { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); }
+  .narration-language-table tr { margin-bottom: 14px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; }
+  .translation-supplement .narration-language-table td { padding: 8px 0; border: 0; }
+  .narration-language-table td::before { content: attr(data-label); display: block; margin-bottom: 6px; font-weight: 600; color: #536747; }
+}
 .ai-review { margin-top: 20px; }
 .ai-review textarea { min-height: 240px; }
 .dialog-heading { flex-wrap: wrap; }

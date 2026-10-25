@@ -43,6 +43,8 @@ jobs:
       - run: npm run typecheck
       - run: node --test tests/cloudflare-map-tiles.test.mjs tests/cloudflare-proxy.test.mjs
       - run: node --experimental-strip-types --test tests/narration-logic.test.mjs
+      - run: npm run test:mobile
+      - run: node --experimental-strip-types --test tests/expo-link.test.mjs
       - run: npm run test:categories
       - run: npm run check:worker
       - run: node --test tests/cloudflare-worker.test.mjs
@@ -114,6 +116,7 @@ jobs:
       - run: mkdir -p apps/web/dist && cp -a .runtime/release/site/. apps/web/dist/
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
+      - run: npx playwright test --config playwright.qr.config.mjs
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

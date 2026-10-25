@@ -5,7 +5,8 @@ import {
   SpeechPlayer,
   aiIssueMessage,
 } from "@quan1/api-client";
-import type { Language, Poi, Translation } from "@quan1/contracts";
+import type { Language, NarrationReview, Poi, Translation } from "@quan1/contracts";
+import { reviewLabel } from "./narration-review";
 
 type Job = {
   id: string;
@@ -24,6 +25,7 @@ type Job = {
     translation: Pick<Translation, "title" | "text">;
     model: string;
     applied_at?: string;
+    discarded_at?: string;
   };
 };
 
@@ -35,6 +37,8 @@ export function NarrationTranslations({
   onApplied,
   onEdit,
   onPreview,
+  reviews,
+  onReviewChange,
 }: {
   poi: Poi;
   languages: Language[];
@@ -43,6 +47,8 @@ export function NarrationTranslations({
   onApplied: (poi: Poi) => void;
   onEdit: (locale: string) => void;
   onPreview: (locale: string) => void;
+  reviews: Record<string, NarrationReview>;
+  onReviewChange: (reviews: Record<string, NarrationReview>, revision: number, poiId: string) => void;
 }) {
   const targets = languages.filter((l) => l.enabled && l.code !== "vi");
   const [selection, setSelection] = useState<string[]>([]);
@@ -54,6 +60,7 @@ export function NarrationTranslations({
   const [workerReady, setWorkerReady] = useState(true);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [error, setError] = useState("");
+  const [remoteChanged, setRemoteChanged] = useState(false);
   const [busy, setBusy] = useState(false);
   const [verified, setVerified] = useState(false);
   const [review, setReview] = useState<{
@@ -64,17 +71,25 @@ export function NarrationTranslations({
   const [checked, setChecked] = useState(false);
   useEffect(() => {
     let alive = true;
+    setRemoteChanged(false);
     async function refresh() {
       try {
         const result = await api<{
           items: Job[];
           policy?: typeof policy;
           worker_ready?: boolean;
+          narration_review: Record<string, NarrationReview>;
+          poi_revision: number;
         }>(`/admin/pois/${poi.id}/narration-jobs`);
         if (alive) {
+          if (result.poi_revision !== poi.revision) {
+            setRemoteChanged(true);
+            return;
+          }
           setJobs(result.items);
           if (result.policy) setPolicy(result.policy);
           setWorkerReady(result.worker_ready !== false);
+          onReviewChange(result.narration_review, result.poi_revision, poi.id);
         }
       } catch (e) {
         if (alive) setError((e as Error).message);
@@ -86,7 +101,7 @@ export function NarrationTranslations({
       alive = false;
       clearInterval(timer);
     };
-  }, [poi.id, poi.revision]);
+  }, [poi.id, poi.revision, onReviewChange]);
   const latest = targets
     .map((l) => jobs.find((j) => j.locale === l.code))
     .filter((j): j is Job => !!j);
@@ -154,6 +169,20 @@ export function NarrationTranslations({
       setBusy(false);
     }
   }
+  async function discard(job: Job) {
+    setBusy(true);
+    setError("");
+    try {
+      const result = await api<Poi>(`/admin/pois/${poi.id}/narration-jobs/${job.id}/discard`, {
+        method: "POST", body: JSON.stringify({ revision: poi.revision }),
+      });
+      setJobs((current) => current.map((item) => item.id === job.id
+        ? { ...item, result: item.result ? { ...item.result, discarded_at: new Date().toISOString() } : null } : item));
+      onApplied(result);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally { setBusy(false); }
+  }
   const labels = vi
     ? {
         queued: "Đang chờ máy AI",
@@ -173,6 +202,9 @@ export function NarrationTranslations({
       aria-label={vi ? "Thuyết minh đa ngôn ngữ" : "Multilingual narration"}
     >
       <h3>{vi ? "Thuyết minh đa ngôn ngữ" : "Multilingual narration"}</h3>
+      {remoteChanged && <p role="alert">{vi
+        ? "Địa điểm đã được cập nhật ở phiên khác. Mở lại địa điểm để xem nội dung và trạng thái duyệt mới nhất."
+        : "This place changed in another session. Reopen it to view the latest content and approval states."}</p>}
       <p>
         {vi
           ? "AI dùng bài tiếng Việt đã lưu và thông tin địa điểm. Kết quả là bản nháp riêng; cần kiểm tra ngôn ngữ, sự thật và nghe thử trước khi công bố."
@@ -223,7 +255,7 @@ export function NarrationTranslations({
         {vi ? "Đang chờ/xử lý" : "Waiting/running"}:{" "}
         {latest.filter((j) => ["queued", "running"].includes(j.status)).length}
       </p>
-      <table>
+      <table className="narration-language-table">
         <thead>
           <tr>
             <th>{vi ? "Chọn ngôn ngữ" : "Select language"}</th>
@@ -235,11 +267,13 @@ export function NarrationTranslations({
           {targets.map((language) => {
             const code = language.code,
               job = jobs.find((j) => j.locale === code),
-              translation = poi.translations[code];
+              translation = poi.translations[code],
+              state = reviews[code],
+              pendingJob = jobs.find((j) => j.id === state?.pending_job_id);
             return (
               <tr key={code}>
-                <td>
-                  <label>
+                <td data-label={vi ? "Ngôn ngữ" : "Language"}>
+                  <label className="narration-language-choice">
                     <input
                       type="checkbox"
                       checked={selection.includes(code)}
@@ -251,27 +285,19 @@ export function NarrationTranslations({
                         )
                       }
                     />
-                    {language.native_name}
+                    <span><strong>{code.toUpperCase()}</strong> {language.native_name}</span>
                   </label>
                 </td>
-                <td>
-                  {job && !job.result?.applied_at
-                    ? job.status === "completed" && !job.reviewable
-                      ? vi
-                        ? "Kết quả cần kiểm tra lại"
-                        : "Result needs revalidation"
-                      : labels[job.status]
-                    : translation?.published
-                      ? vi
-                        ? "Đã công bố"
-                        : "Published"
-                      : translation?.tts_ready
-                        ? vi
-                          ? "Bản đã lưu"
-                          : "Saved draft"
-                        : vi
-                          ? "Chưa có"
-                          : "Missing"}
+                <td data-label={vi ? "Trạng thái / nguồn" : "Status / source"}>
+                  <p className="narration-review-status">{reviewLabel(state, vi)}</p>
+                  {state?.source && <small className="narration-status-detail">
+                    {vi ? "Nguồn" : "Source"}: {state.source === "ai" ? "AI" : vi ? "Thủ công" : "Manual"}
+                  </small>}
+                  {job && !job.result?.applied_at && !job.result?.discarded_at && (
+                    <p className="narration-status-detail">{job.status === "completed" && !job.reviewable
+                      ? vi ? "Kết quả cần kiểm tra lại" : "Result needs revalidation"
+                      : labels[job.status]}</p>
+                  )}
                   {(job?.source_changed ||
                     poi.narration_meta?.[code]?.stale) && (
                     <p>
@@ -281,17 +307,20 @@ export function NarrationTranslations({
                     </p>
                   )}
                   {poi.narration_meta?.[code]?.model && (
-                    <small>{poi.narration_meta[code].model}</small>
+                    <small className="narration-status-detail">{vi ? "Mô hình" : "Model"}: {poi.narration_meta[code].model}</small>
+                  )}
+                  {job?.result?.model && job.result.model !== poi.narration_meta?.[code]?.model && (
+                    <small className="narration-status-detail">{vi ? "Mô hình" : "Model"}: {job.result.model}</small>
                   )}
                   {job?.timings && (
-                    <small>
+                    <small className="narration-status-detail">
                       {vi ? "Chờ" : "Queue"}:{" "}
                       {Math.round(job.timings.queue_wait_seconds ?? 0)}s
                       {job.timings.generation_seconds != null &&
                         ` · ${vi ? "Xử lý" : "Generation"}: ${Math.round(job.timings.generation_seconds)}s`}
                     </small>
                   )}
-                  {job &&
+                  {job && !job.result?.discarded_at && !job.result?.applied_at &&
                     (job.status === "failed" ||
                       (job.status === "completed" && !job.reviewable)) && (
                       <p>
@@ -311,7 +340,8 @@ export function NarrationTranslations({
                       </p>
                     )}
                 </td>
-                <td>
+                <td data-label={vi ? "Thao tác" : "Actions"}>
+                  <div className="narration-row-actions">
                   <button
                     type="button"
                     className="button secondary"
@@ -347,18 +377,23 @@ export function NarrationTranslations({
                         ? "AI bổ sung / thử lại"
                         : "AI generate / retry"}
                   </button>
-                  {job?.result && job.reviewable && !job.result.applied_at && (
+                  {pendingJob?.result && (
                     <button
                       type="button"
                       className="button secondary"
                       onClick={() => {
-                        setReview({ job, ...job.result!.translation });
+                        setReview({ job: pendingJob, ...pendingJob.result!.translation });
                         setChecked(false);
                       }}
                     >
                       {vi ? "Xem & chỉnh bản AI" : "Review & edit AI draft"}
                     </button>
                   )}
+                  {pendingJob && <button type="button" className="button secondary" disabled={disabled || busy}
+                    onClick={() => discard(pendingJob)}>
+                    {vi ? "Bỏ bản AI mới" : "Discard new AI draft"}
+                  </button>}
+                  </div>
                 </td>
               </tr>
             );

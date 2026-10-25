@@ -44,6 +44,13 @@ export interface Translation {
   tts_ready: boolean;
   published?: boolean;
 }
+export interface NarrationReview {
+  state: "empty" | "pending" | "approved";
+  source: "ai" | "manual" | null;
+  approved_current: boolean;
+  pending_job_id: string | null;
+  preserves_approved: boolean;
+}
 export interface WikipediaSource {
   url: string;
   title: string;
@@ -101,6 +108,7 @@ export interface Poi {
     string,
     { origin: string; stale: boolean; source_revision?: number; model?: string }
   >;
+  narration_review?: Record<string, NarrationReview>;
   source?: WikipediaSource | null;
   status: Status;
   revision: number;

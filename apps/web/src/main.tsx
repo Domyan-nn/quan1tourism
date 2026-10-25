@@ -23,10 +23,16 @@ import { getCategoryLabel } from "@quan1/contracts";
 import type { PublicCategory, Language, Locale, Poi } from "@quan1/contracts";
 import { AuthControls } from "./Auth";
 import { MapExplorer } from "./MapExplorer";
+import { MobileAppCard } from "./MobileAppCard";
+import { expoGoUrl } from "./expo-link";
 import "@fontsource/be-vietnam-pro/400.css";
 import "@fontsource/be-vietnam-pro/500.css";
 import "@fontsource/be-vietnam-pro/600.css";
 import "./styles.css";
+
+declare const __EXPO_QR_ENABLED__: string;
+declare const __EXPO_GO_URL__: string;
+const mobileAppUrl = expoGoUrl(__EXPO_QR_ENABLED__, __EXPO_GO_URL__);
 
 function Visitor() {
   const [uiLocale, setUiLocale] = useState(() =>
@@ -293,28 +299,31 @@ function Visitor() {
           </article>
         ) : (
           <>
-            <div className="hero">
-              <span className="eyebrow">HELLO, SAIGON EXPLORER</span>
-              <h1>
-                {vi ? (
-                  <>
-                    Sài Gòn, qua
-                    <br />
-                    <em>những câu chuyện.</em>
-                  </>
-                ) : (
-                  <>
-                    Saigon, told
-                    <br />
-                    <em>one story at a time.</em>
-                  </>
-                )}
-              </h1>
-              <p>
-                {vi
-                  ? "Chậm lại một chút. Lắng nghe và khám phá vẻ đẹp Quận 1 theo cách của riêng bạn."
-                  : "Slow down. Listen to the stories and discover District 1 at your own pace."}
-              </p>
+            <div className={`hero${mobileAppUrl ? " hero-with-mobile" : ""}`}>
+              <div className="hero-copy">
+                <span className="eyebrow">HELLO, SAIGON EXPLORER</span>
+                <h1>
+                  {vi ? (
+                    <>
+                      Sài Gòn, qua
+                      <br />
+                      <em>những câu chuyện.</em>
+                    </>
+                  ) : (
+                    <>
+                      Saigon, told
+                      <br />
+                      <em>one story at a time.</em>
+                    </>
+                  )}
+                </h1>
+                <p>
+                  {vi
+                    ? "Chậm lại một chút. Lắng nghe và khám phá vẻ đẹp Quận 1 theo cách của riêng bạn."
+                    : "Slow down. Listen to the stories and discover District 1 at your own pace."}
+                </p>
+              </div>
+              {mobileAppUrl && <MobileAppCard url={mobileAppUrl} vi={vi} />}
             </div>
             <div className="list-heading">
               <h2>{vi ? "Địa điểm để lắng nghe" : "Places with a story"}</h2>

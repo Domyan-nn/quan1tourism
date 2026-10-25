@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from .languages import languages
 from .models import Audit, Media, Poi, Release, User, now
+from .narration_review import mark_reviewed, review_states
 
 
 def iso(value):
@@ -39,6 +40,7 @@ def serialize(poi: Poi, db: Session, *, statistics=False):
         "trigger_radius_m": poi.trigger_radius_m,
         "auto_narration_enabled": poi.auto_narration_enabled,
         "narration_meta": poi.narration_meta,
+        "narration_review": review_states(poi, db),
         "source": poi.source,
         "status": poi.status,
         "revision": poi.revision,
@@ -90,6 +92,7 @@ def text_snapshot(snapshot):
     result.pop("view_count", None)
     result.pop("listen_count", None)
     result.pop("narration_meta", None)
+    result.pop("narration_review", None)
     result.setdefault("trigger_radius_m", 100)
     result.setdefault("auto_narration_enabled", False)
     result["translations"] = {
@@ -164,6 +167,8 @@ def transition(db: Session, poi: Poi, user: User, data):
         }[action]
     poi.note = data.note
     touch(poi)
+    if action in ("approve", "publish"):
+        mark_reviewed(poi, user, db)
     if action == "publish":
         for release in db.scalars(
             select(Release).where(Release.poi_id == poi.id, Release.is_current.is_(True))

@@ -196,6 +196,9 @@ def test_generate_review_save_and_publish_keep_sources(env, upstream, monkeypatc
     assert created.status_code == 201, created.text
     poi = created.json()
     assert poi["status"] == "draft" and poi["source"] == payload["source"]
+    assert poi["narration_review"]["fr"]["state"] == "pending"
+    assert poi["narration_review"]["fr"]["source"] == "ai"
+    assert poi["narration_meta"]["fr"]["import_job_id"]
     assert client.get(f"/api/v1/pois/{poi['id']}").status_code == 404
     assert client.post("/api/v1/admin/pois", json=payload).status_code == 409
     assert (

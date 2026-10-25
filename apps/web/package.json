@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@quan1/api-client": "*",
-    "@quan1/contracts": "*"
+    "@quan1/contracts": "*",
+    "qrcode.react": "4.2.0"
   }
 }

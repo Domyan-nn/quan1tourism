@@ -14,5 +14,6 @@ __pycache__/
 playwright-report/
 test-results/
 .wrangler/
+.expo/
 .dev.vars
 .dev.vars.*

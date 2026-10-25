@@ -3,9 +3,10 @@ WORKDIR /build
 COPY package.json package-lock.json ./
 COPY apps/admin/package.json apps/admin/package.json
 COPY apps/web/package.json apps/web/package.json
+COPY apps/mobile/package.json apps/mobile/package.json
 COPY packages/api-client/package.json packages/api-client/package.json
 COPY packages/contracts/package.json packages/contracts/package.json
-RUN npm ci
+RUN npm ci && npm ls --workspace @quan1/mobile expo react-native --depth=0
 COPY apps ./apps
 COPY packages ./packages
 COPY tsconfig.json ./

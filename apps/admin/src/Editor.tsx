@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -30,6 +30,7 @@ import type {
   Category,
   Language,
   Locale,
+  NarrationReview,
   Poi,
   Release,
   User,
@@ -38,6 +39,7 @@ import { Badge, Cover, Dialog, Loading } from "./components";
 import { messages, type UiLocale } from "./i18n";
 import { WikipediaImport } from "./WikipediaImport";
 import { NarrationTranslations } from "./NarrationTranslations";
+import { displayedReviews, reviewLabel } from "./narration-review";
 
 type Props = {
   initial: Poi | "new";
@@ -145,6 +147,13 @@ export function Editor({
   const languageCodes = enabledLanguages.map((language) => language.code);
   const translation = (code: string) =>
     form.translations[code] ?? { title: "", text: "", tts_ready: false };
+  const narrationReviews = displayedReviews(form, saved);
+  const syncReviews = useCallback((reviews: Record<string, NarrationReview>, revision: number, poiId: string) => {
+    setSaved((current) => current.revision === revision && current.id === poiId
+      ? { ...current, narration_review: reviews } : current);
+    setForm((current) => current.revision === revision && current.id === poiId
+      ? { ...current, narration_review: reviews } : current);
+  }, []);
   const languageName = (code: string) =>
     languages.find((language) => language.code === code)?.native_name ?? code;
   const checklistLanguages = enabledLanguages.filter(
@@ -263,6 +272,7 @@ export function Editor({
   function updateTranslation(key: "title" | "text", value: string) {
     setForm((p) => ({
       ...p,
+      status: ["approved", "published"].includes(p.status) ? "draft" : p.status,
       translations: {
         ...p.translations,
         [lang]: {
@@ -754,6 +764,8 @@ export function Editor({
                     vi={vi}
                     disabled={dirty || busy}
                     onApplied={accept}
+                    reviews={narrationReviews}
+                    onReviewChange={syncReviews}
                   />
                 )}
                 <div
@@ -766,6 +778,8 @@ export function Editor({
                       key={l}
                       role="tab"
                       aria-selected={lang === l}
+                      title={reviewLabel(narrationReviews[l], vi)}
+                      aria-label={`${l.toUpperCase()} ${languageName(l)}${languages.find((language) => language.code === l)?.required ? " *" : ""} — ${reviewLabel(narrationReviews[l], vi)}`}
                       className={lang === l ? "active" : ""}
                       onClick={() => setLang(l)}
                     >
@@ -775,10 +789,16 @@ export function Editor({
                         ?.required
                         ? " *"
                         : ""}
-                      {translation(l).text && <Check size={14} />}
+                      <span className="language-review-symbol" aria-hidden="true">
+                        {narrationReviews[l]?.state === "approved" ? "✓" : narrationReviews[l]?.state === "pending" ? "○" : ""}
+                      </span>
                     </button>
                   ))}
                 </div>
+                <p className="language-review-legend">
+                  {vi ? "✓ Admin đã duyệt nội dung hiện tại · ○ Có nội dung chưa duyệt · * Ngôn ngữ bắt buộc"
+                    : "✓ Current content approved by an administrator · ○ Content awaiting review · * Required language"}
+                </p>
                 <fieldset disabled={busy || locked}>
                   <label className="field-label">
                     {vi ? "Tiêu đề thuyết minh" : "Narration title"}{" "}

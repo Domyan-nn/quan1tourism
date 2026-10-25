@@ -108,6 +108,97 @@ main {
   max-width: 460px;
   color: #7d8f6b;
 }
+.hero-copy {
+  min-width: 0;
+}
+.hero-with-mobile {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 244px;
+  gap: 32px;
+  align-items: center;
+}
+.hero-with-mobile h1 {
+  font-size: clamp(2.75rem, 4.4vw, 4.3rem);
+  overflow-wrap: anywhere;
+}
+.mobile-app-card {
+  min-width: 0;
+  padding: 22px 20px 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  border: 1px solid #dce5d2;
+  border-radius: 16px;
+  background: #edf3e4;
+  text-align: center;
+  color: #355740;
+}
+.mobile-app-card h2 {
+  font-size: 1rem;
+  font-weight: 500;
+  line-height: 1.7;
+  margin: 8px 0 16px;
+}
+.mobile-app-qr {
+  display: block;
+  flex-shrink: 0;
+  width: 176px;
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+}
+.hero .mobile-app-card p {
+  margin: 12px 0;
+  font-size: 0.8rem;
+  color: #526943;
+}
+.mobile-app-copy,
+.mobile-app-open {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px;
+  border: 1px solid #b9cba9;
+  border-radius: 7px;
+  color: #355740;
+  background: #fffef9;
+  font-size: 0.8rem;
+}
+.mobile-app-open {
+  display: none;
+  margin-bottom: 8px;
+  border-color: #355740;
+  background: #355740;
+  color: white;
+}
+.mobile-app-card small,
+.mobile-app-feedback,
+.mobile-app-manual {
+  color: #526943;
+  font-size: 0.7rem;
+  line-height: 1.8;
+}
+.mobile-app-feedback {
+  min-height: 1.8em;
+  margin-top: 4px;
+}
+.mobile-app-manual {
+  width: 100%;
+  margin-bottom: 12px;
+}
+.mobile-app-manual input {
+  width: 100%;
+  min-width: 0;
+  margin-top: 5px;
+  padding: 9px;
+  border: 1px solid #b9cba9;
+  border-radius: 5px;
+  background: white;
+  color: #355740;
+}
 .list-heading {
   display: flex;
   justify-content: space-between;
@@ -519,6 +610,16 @@ button:disabled {
   text-align: center;
 }
 @media (max-width: 800px) {
+  .hero-with-mobile {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+  }
+  .mobile-app-card {
+    width: min(100%, 300px);
+  }
+  .mobile-app-open {
+    display: flex;
+  }
   .place-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -534,6 +635,11 @@ button:disabled {
   }
   .search input {
     width: 100%;
+  }
+}
+@media (pointer: coarse) {
+  .mobile-app-open {
+    display: flex;
   }
 }
 @media (max-width: 500px) {

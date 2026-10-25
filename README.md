@@ -1,5 +1,9 @@
 # Saigon Stories · Quận 1 Tourism
 
+Ứng dụng Expo Go và QR trên hero: [chạy LAN/tunnel trên Windows, backend/phiên và giới hạn thiết bị](docs/MOBILE-EXPO.md).
+Chỉnh bảng thuyết minh admin và dấu duyệt theo nội dung: [quy tắc và bàn giao](docs/ADMIN-NARRATION-REVIEW.md).
+Kết quả hai thay đổi: [báo cáo kiểm tra](docs/IMPLEMENTATION-VERIFICATION.md). Chưa triển khai production.
+
 Danh mục song ngữ Việt/Anh và migration `0010`: [mapping, kiểm thử và hướng dẫn chuyển đổi](docs/BILINGUAL-CATEGORIES.md).
 
 Sửa độ tin cậy luồng dịch AI: [nguyên nhân, kiểm thử, audit và hướng dẫn vận hành](docs/AI-TRANSLATION-RELIABILITY.md). Bản vá đã được kiểm thử local; `qwen3:4b` chưa vượt pilot dịch, batch mặc định một ngôn ngữ.
@@ -13,7 +17,7 @@ Trang quản trị nội dung thuyết minh du lịch bằng **React + TypeScrip
 Triển khai Supabase + Render + Cloudflare và nhận việc bằng Ollama trên máy cá nhân:
 xem [hướng dẫn triển khai cloud](docs/CLOUD-DEPLOYMENT.md).
 
-Cần Node.js **22.12 trở lên**, Python **3.12** và [uv](https://docs.astral.sh/uv/). Không cần Docker. Trong phiên triển khai đã tải Node portable vào `.tools/node-v22.22.0-win-x64`; thư mục này không đưa vào Git.
+Cần Node.js **22.22 trở lên**, Python **3.12** và [uv](https://docs.astral.sh/uv/). Không cần Docker. Trong phiên triển khai đã tải Node portable vào `.tools/node-v22.22.0-win-x64`; thư mục này không đưa vào Git.
 
 Mở PowerShell tại thư mục dự án. Nếu chưa có Node trên PATH nhưng đã có bản portable:
 
@@ -147,4 +151,4 @@ Xem [báo cáo kiểm thử](docs/TEST-REPORT.md), [kiến trúc/API](docs/ARCHI
 
 ## Giới hạn hiện tại
 
-Luồng nội dung Giai đoạn 1 có backend thật và đã khởi tạo PostgreSQL 18 local. Chưa triển khai tour, Expo/mobile, quét QR, GPS, PWA/offline, đồng bộ tiến độ, worker Celery/Redis, S3 và quản trị tài khoản. PostGIS chỉ được thêm khi máy chủ có extension; nhánh PostGIS chưa kiểm thử trên máy này. AI có thể bỏ sót hoặc suy diễn sai nên chỉ tạo bản nháp để duyệt. Thông tin triển khai xem hướng dẫn cloud ở đầu tài liệu.
+Luồng nội dung Giai đoạn 1 có backend thật và đã khởi tạo PostgreSQL 18 local. Đã bổ sung mã Expo/mobile, thẻ QR tùy cấu hình và GPS foreground; chưa nghiệm thu trên thiết bị thật. Chưa triển khai tour, PWA/offline, đồng bộ tiến độ, worker Celery/Redis, S3 và quản trị tài khoản. PostGIS chỉ được thêm khi máy chủ có extension; nhánh PostGIS chưa kiểm thử trên máy này. AI có thể bỏ sót hoặc suy diễn sai nên chỉ tạo bản nháp để duyệt. Thông tin triển khai xem hướng dẫn cloud ở đầu tài liệu.

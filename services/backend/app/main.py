@@ -29,11 +29,13 @@ from .ai_jobs import prepare_import, queue_status, router as ai_router, worker_m
 from .duplicates import ensure_unique, find_duplicates, reserve_identities
 
 from .narration_jobs import router as narration_router
+from .native_auth import router as native_auth_router
 from .media_storage import local_path, parse_reference, read_remote_image, remove_new_image, store_image
 
 app = FastAPI(title="Saigon Stories API", version="0.1.0")
 app.include_router(ai_router)
 app.include_router(narration_router)
+app.include_router(native_auth_router)
 editors = require("editor", "reviewer", "admin")
 login_attempts: dict[str, deque] = defaultdict(deque)
 registration_attempts: dict[str, deque] = defaultdict(deque)
@@ -42,7 +44,9 @@ registration_attempts: dict[str, deque] = defaultdict(deque)
 @app.middleware("http")
 async def request_context(request: Request, call_next):
     request_id = uuid.uuid4().hex
-    visit_session = request.cookies.get(ENGAGEMENT_COOKIE, "")
+    # Native clients persist this anonymous random ID in secure device storage;
+    # they cannot rely on a browser cookie jar surviving an app restart.
+    visit_session = request.headers.get("X-Quan1-Visit", request.cookies.get(ENGAGEMENT_COOKIE, ""))
     new_visit = len(visit_session) != 64 or any(c not in "0123456789abcdef" for c in visit_session)
     request.state.visit_session = secrets.token_hex(32) if new_visit else visit_session
     if (
@@ -59,7 +63,7 @@ async def request_context(request: Request, call_next):
     response.headers["X-Request-ID"] = request_id
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "same-origin"
-    if request.url.path.startswith(("/api/v1/admin", "/api/v1/auth", "/api/v1/worker")):
+    if request.url.path.startswith(("/api/v1/admin", "/api/v1/auth", "/api/v1/native/auth", "/api/v1/worker")):
         response.headers["Cache-Control"] = "no-store"
     if request.url.path.startswith(("/api/v1/health/", "/api/v1/version")):
         response.headers["Cache-Control"] = "no-store"
@@ -74,7 +78,7 @@ async def http_error(request, exc):
 @app.exception_handler(RequestValidationError)
 async def validation_error(request, exc):
     # Never echo login input or uploaded content back into errors/logs.
-    if request.url.path == "/api/v1/auth/register":
+    if request.url.path in {"/api/v1/auth/register", "/api/v1/native/auth/register"}:
         return JSONResponse(
             {"detail": "Nhập họ tên, email hợp lệ và mật khẩu từ 8 đến 200 ký tự. Không thêm trường khác."},
             status_code=422,
@@ -380,13 +384,17 @@ def apply_input(poi: Poi, data: PoiInput, db: DbSession):
     meta = dict(poi.narration_meta or {})
     if old_source != source_hash(poi):
         meta = {code: {**entry, "stale": True} for code, entry in meta.items()}
-    for code, tr in translations.items():
-        if translation_hash(tr) != translation_hash(old_translations.get(code, {})):
-            meta[code] = {"origin": "manual", "source_hash": source_hash(poi), "stale": False}
+    changed_codes = {code for code, tr in translations.items()
+                     if translation_hash(tr) != translation_hash(old_translations.get(code, {}))}
+    from .narration_review import import_origins
+
+    origins = import_origins(poi, db, changed_codes)
+    for code in changed_codes:
+        meta[code] = {"origin": "manual", "source_hash": source_hash(poi), "stale": False, **origins.get(code, {})}
     poi.narration_meta = meta
 
 
-def save_visibility(db, poi, status):
+def save_visibility(db, poi, status, user):
     if status is None:
         return
     poi.status = status
@@ -394,6 +402,9 @@ def save_visibility(db, poi, status):
         return  # Draft changes must never remove or modify the last public snapshot.
     if status == "published":
         ready(poi, db)
+        from .narration_review import mark_reviewed
+
+        mark_reviewed(poi, user, db)
     for release in db.scalars(select(Release).where(Release.poi_id == poi.id, Release.is_current.is_(True))):
         release.is_current = False
     if status == "published":
@@ -425,6 +436,10 @@ def wikipedia_preview(
         return {"existing_poi": existing}
     result = generate_draft(data.url, payload["categories"], payload["languages"], article=payload["article"])
     result["existing_poi"] = None
+    from .models import AiJob
+
+    db.add(AiJob(requested_by=user.id, payload=payload, status="completed", result=result))
+    db.commit()
     return result
 
 
@@ -441,7 +456,7 @@ def create_poi(data: PoiInput, db: DbSession = Depends(get_db), user: User = Dep
     db.add(poi)
     try:
         db.flush()
-        save_visibility(db, poi, data.status)
+        save_visibility(db, poi, data.status, user)
         reserve_identities(db, poi)
         audit(db, user, poi, "create")
         db.commit()
@@ -466,7 +481,7 @@ def update_poi(poi_id: str, data: PoiInput, db: DbSession = Depends(get_db), use
     apply_input(poi, data, db)
     poi.status = "draft"
     touch(poi)
-    save_visibility(db, poi, data.status or "draft")
+    save_visibility(db, poi, data.status or "draft", user)
     audit(db, user, poi, "update")
     try:
         reserve_identities(db, poi)

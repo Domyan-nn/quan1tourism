@@ -10,10 +10,16 @@
     "start:local": "node scripts/dev.mjs",
     "dev": "npm run dev --workspace @quan1/admin",
     "dev:web": "npm run dev --workspace @quan1/web",
+    "mobile:lan": "npm run start --workspace @quan1/mobile",
+    "mobile:tunnel": "npm run tunnel --workspace @quan1/mobile",
+    "typecheck:mobile": "npm run typecheck --workspace @quan1/mobile",
+    "test:mobile": "node --experimental-strip-types --test tests/mobile-logic.test.mjs",
+    "test:qr": "node --experimental-strip-types --test tests/expo-link.test.mjs",
+    "test:qr:ui": "playwright test --config playwright.qr.config.mjs",
     "build": "npm run build --workspaces --if-present",
     "build:site": "node scripts/build-site.mjs",
     "deploy:cloudflare": "wrangler deploy",
-    "typecheck": "tsc --noEmit -p apps/admin && tsc --noEmit -p apps/web && npm run typecheck:edge",
+    "typecheck": "tsc --noEmit -p apps/admin && tsc --noEmit -p apps/web && npm run typecheck:edge && npm run typecheck:mobile",
     "typecheck:edge": "tsc --noEmit -p tsconfig.edge.json",
     "test:edge": "node --test tests/cloudflare-map-tiles.test.mjs tests/cloudflare-proxy.test.mjs",
     "check:worker": "wrangler deploy --dry-run --outdir .runtime/worker-bundle",
@@ -22,7 +28,7 @@
     "test:categories": "node --experimental-strip-types --test tests/category-label.test.mjs"
   },
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=22.22.0"
   },
   "overrides": {
     "undici": "7.30.1"
@@ -43,7 +49,7 @@
     "@fontsource/be-vietnam-pro": "^5.2.0",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.577.0",
-    "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
   }
 }
