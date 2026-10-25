@@ -147,8 +147,18 @@ def test_publishing_does_not_approve_hidden_language_content(env):
     assert state(poi, "en")["state"] == "approved"
     assert state(poi, "fr")["state"] == "pending"
     assert "approval" not in poi["narration_meta"]["fr"]
+    assert not poi["translations"]["fr"]["published"]
+    public_endpoint = f"/api/v1/pois/{poi['id']}?track_view=false"
+    assert "fr" not in client.get(public_endpoint).json()["translations"]
+    assert "fr" not in client.get("/api/v1/pois").json()["items"][0]["translations"]
     client.put("/api/v1/admin/languages/fr", json=french)
     assert state(client.get(f"/api/v1/admin/pois/{poi['id']}").json(), "fr")["state"] == "pending"
+    # Enabling a language must not implicitly publish its unreviewed draft.
+    assert "fr" not in client.get(public_endpoint).json()["translations"]
+    republished = client.put(f"/api/v1/admin/pois/{poi['id']}",
+        json=payload | {"revision": poi["revision"], "status": "published"})
+    assert republished.status_code == 200
+    assert client.get(public_endpoint).json()["translations"]["fr"]["text"] == "Contenu non vérifié."
 
 
 def test_model_name_in_source_does_not_forge_ai_provenance(env):

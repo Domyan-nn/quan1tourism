@@ -24,7 +24,8 @@ def serialize(poi: Poi, db: Session, *, statistics=False):
             "title": tr.get("title", ""),
             "text": tr.get("text", ""),
             "tts_ready": bool(tr.get("title", "").strip() and tr.get("text", "").strip()),
-            "published": bool(current_release and all(
+            "published": bool(current_release
+                and locale in current_release.snapshot.get("published_language_codes", [locale]) and all(
                 current_release.snapshot.get("translations", {}).get(locale, {}).get(key, "") == tr.get(key, "")
                 for key in ("title", "text")) and tr.get("text", "").strip()),
         }
@@ -86,13 +87,24 @@ def ready(poi: Poi, db: Session):
             )
 
 
-def text_snapshot(snapshot):
+def publication_snapshot(poi: Poi, db: Session):
+    snapshot = serialize(poi, db)
+    snapshot["has_published"] = True
+    # Keep hidden text in the raw historical snapshot for restoration, but
+    # never turn enabling its language later into an implicit publication.
+    snapshot["published_language_codes"] = [language.code for language in languages(db, enabled_only=True)]
+    return snapshot
+
+
+def text_snapshot(snapshot, enabled_codes=None):
     """Expose narration text for both new and historical releases, never legacy audio links."""
     result = copy.deepcopy(snapshot)
     result.pop("view_count", None)
     result.pop("listen_count", None)
     result.pop("narration_meta", None)
     result.pop("narration_review", None)
+    result.pop("note", None)
+    published_codes = result.pop("published_language_codes", None)
     result.setdefault("trigger_radius_m", 100)
     result.setdefault("auto_narration_enabled", False)
     result["translations"] = {
@@ -102,6 +114,8 @@ def text_snapshot(snapshot):
             "tts_ready": bool(tr.get("title", "").strip() and tr.get("text", "").strip()),
         }
         for code, tr in snapshot.get("translations", {}).items()
+        if (published_codes is None or code in published_codes)
+        and (enabled_codes is None or code in enabled_codes)
     }
     return result
 
@@ -174,8 +188,7 @@ def transition(db: Session, poi: Poi, user: User, data):
             select(Release).where(Release.poi_id == poi.id, Release.is_current.is_(True))
         ):
             release.is_current = False
-        snapshot = serialize(poi, db)
-        snapshot["has_published"] = True
+        snapshot = publication_snapshot(poi, db)
         db.add(Release(poi_id=poi.id, revision=poi.revision, snapshot=snapshot))
         for media_id in filter(None, [poi.image_id]):
             media = db.get(Media, media_id)

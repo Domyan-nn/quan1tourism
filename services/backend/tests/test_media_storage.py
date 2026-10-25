@@ -9,6 +9,7 @@ from urllib.parse import unquote, urlsplit
 
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
+from PIL import Image
 import pytest
 from sqlalchemy import event, select
 
@@ -128,6 +129,59 @@ def test_lost_commit_acknowledgement_does_not_delete_a_referenced_object(env, re
         assert current.image_id != poi['image_id']
         image_id = current.image_id
     assert client.get(f'/api/v1/media/{image_id}').status_code == 200
+
+
+def test_upload_id_acknowledges_a_lost_response_without_new_media_or_revision(env, remote, monkeypatch):
+    from sqlalchemy.exc import OperationalError
+    from sqlalchemy.orm import Session
+
+    client, factory, _ = env
+    login(client, 'admin')
+    poi = create(client)
+    upload_id = 'a' * 32
+    endpoint = f"/api/v1/admin/pois/{poi['id']}/upload"
+    params = {'kind': 'image', 'revision': poi['revision'], 'upload_id': upload_id}
+    original = Session.commit
+    def lost_ack(session):
+        original(session)
+        raise OperationalError('COMMIT', {}, OSError('synthetic lost acknowledgement'))
+    monkeypatch.setattr(Session, 'commit', lost_ack)
+    with TestClient(app, headers=HEADERS, raise_server_exceptions=False) as uncertain:
+        uncertain.cookies.update(client.cookies)
+        first = uncertain.post(endpoint, params=params, files={'file': ('image.png', image_bytes(), 'image/png')})
+    assert first.status_code == 500
+    monkeypatch.setattr(Session, 'commit', original)
+    second = client.post(endpoint, params=params, files={'file': ('image.png', image_bytes(), 'image/png')})
+    assert second.status_code == 200, second.text
+    assert second.json()['image_id'] == upload_id
+    assert second.json()['revision'] == poi['revision'] + 1
+    assert len(remote.objects) == 1
+    with factory() as db:
+        assert len(list(db.scalars(select(Media)))) == 1
+        assert len(list(db.scalars(select(Audit).where(Audit.action == 'upload')))) == 1
+
+
+def test_upload_id_cannot_reuse_another_image_or_hide_newer_revision(env, remote):
+    client, _, _ = env
+    login(client, 'admin')
+    poi = create(client)
+    endpoint = f"/api/v1/admin/pois/{poi['id']}/upload"
+    params = {'kind': 'image', 'revision': poi['revision'], 'upload_id': 'b' * 32}
+    uploaded = client.post(endpoint, params=params, files={'file': ('image.png', image_bytes(), 'image/png')}).json()
+    other = io.BytesIO()
+    Image.new('RGB', (20, 20), 'red').save(other, format='PNG')
+    assert client.post(endpoint, params=params,
+        files={'file': ('different.png', other.getvalue(), 'image/png')}).status_code == 409
+    another = create(client, 'Another place')
+    assert client.post(f"/api/v1/admin/pois/{another['id']}/upload", params=params,
+        files={'file': ('image.png', image_bytes(), 'image/png')}).status_code == 409
+    from test_workflow import draft_payload
+
+    assert client.put(f"/api/v1/admin/pois/{poi['id']}",
+        json=draft_payload() | {'revision': uploaded['revision']}).status_code == 200
+    assert client.post(endpoint, params=params,
+        files={'file': ('image.png', image_bytes(), 'image/png')}).status_code == 409
+    assert len(remote.objects) == 1
 
 
 @pytest.mark.parametrize('failure', ['timeout', 'credentials', 'redirect'])

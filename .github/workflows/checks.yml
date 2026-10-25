@@ -47,6 +47,7 @@ jobs:
       - run: npm run test:tooling
       - run: node --experimental-strip-types --test tests/expo-link.test.mjs
       - run: npm run test:categories
+      - run: node --test tests/release-bundle.test.mjs
       - run: npm run check:worker
       - run: node --test tests/cloudflare-worker.test.mjs
       - run: node scripts/release-bundle.mjs pack
@@ -125,6 +126,7 @@ jobs:
           path: |
             playwright-report/
             test-results/
+            .runtime/qr-test-results/
             .runtime/screenshots/
           retention-days: 7
   docker:

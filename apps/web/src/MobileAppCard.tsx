@@ -36,6 +36,7 @@ export function MobileAppCard({ url, vi }: { url: string; vi: boolean }) {
         className="mobile-app-qr"
       />
       <p>{vi ? "Mở Expo Go để quét mã" : "Scan with Expo Go"}</p>
+      <p><a href="https://expo.dev/go" target="_blank" rel="noreferrer">{vi ? "Cài Expo Go cho điện thoại" : "Install Expo Go on your phone"}</a></p>
       <a className="mobile-app-open" href={url}>
         <Smartphone size={17} aria-hidden="true" />
         {vi ? "Mở bằng Expo Go" : "Open in Expo Go"}
@@ -67,6 +68,7 @@ export function MobileAppCard({ url, vi }: { url: string; vi: boolean }) {
           ? "Phiên dùng thử cần máy chạy ứng dụng tiếp tục bật."
           : "This preview needs the app server to stay running."}
       </small>
+      <a className="auth-link" href="#places">{vi ? "Tiếp tục dùng web" : "Continue on the web"}</a>
     </aside>
   );
 }

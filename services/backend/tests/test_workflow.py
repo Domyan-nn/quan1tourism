@@ -133,6 +133,35 @@ def test_saving_draft_preserves_public_snapshot_and_release_history(env):
         assert text_snapshot(db.scalar(select(Release)).snapshot) == old_public
 
 
+def test_reviewer_feedback_stays_private_after_admin_republishes_and_for_legacy_snapshots(env):
+    client, factory, _ = env
+    login(client, "admin")
+    poi = action(client, create(client), "submit").json()
+    private_note = "Ghi chú nội bộ: cần đối chiếu tài liệu chưa công bố."
+    poi = action(client, poi, "reject", note=private_note).json()
+    published = client.put(f"/api/v1/admin/pois/{poi['id']}",
+        json=draft_payload() | {"revision": poi["revision"], "status": "published"})
+    assert published.status_code == 200
+    assert published.json()["note"] == private_note
+    for legacy in (False, True):
+        if legacy:
+            with factory() as db:
+                release = db.scalar(select(Release).where(Release.poi_id == poi["id"]))
+                assert release.snapshot["note"] == private_note
+                snapshot = dict(release.snapshot)
+                snapshot.pop("published_language_codes", None)
+                release.snapshot = snapshot
+                db.commit()
+        client.post("/api/v1/auth/logout")
+        detail = client.get(f"/api/v1/pois/{poi['id']}?track_view=false").json()
+        listing = client.get("/api/v1/pois").json()["items"]
+        assert "note" not in detail
+        assert private_note not in str(detail) + str(listing)
+        assert all("note" not in item for item in listing)
+        login(client, "admin")
+        assert client.get(f"/api/v1/admin/pois/{poi['id']}").json()["note"] == private_note
+
+
 def test_stale_admin_cannot_overwrite_newer_revision(env):
     client, _, _ = env
     login(client, "admin")

@@ -444,3 +444,81 @@ test("cloud AI request resumes after reload and returns a private draft", async 
     page.getByRole("button", { name: "Lưu thay đổi", exact: true }),
   ).toBeEnabled();
 });
+
+for (const failure of ["storage", "upload-response", "visibility"] as const) {
+  test(`saving with an image retries the ${failure} step without duplicate places or uploads`, async ({ page }, info) => {
+    await login(page);
+    await page.getByRole("button", { name: "Thêm địa điểm", exact: true }).click();
+    const name = `Image recovery ${failure} ${info.project.name} ${Date.now()}`;
+    await page.getByLabel("Tên địa điểm", { exact: false }).fill(name);
+    await page.getByLabel("Địa chỉ", { exact: true }).fill("Quận 1, TP. Hồ Chí Minh");
+    await page.locator('input[type="file"]').setInputFiles({ name: "cover.png", mimeType: "image/png",
+      buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAIAAAAC64paAAAAK0lEQVR4nGNkaGAgGzCRr5VhVDOpgIlkHUhgVDOJgIlUDchgVDOJgKIAAwDFMgCoOrIAcgAAAABJRU5ErkJggg==", "base64") });
+    if (failure === "visibility") {
+      await page.getByRole("button", { name: "Bước 2: Nội dung đa ngôn ngữ", exact: true }).click();
+      await page.getByLabel("Tiêu đề thuyết minh", { exact: false }).fill(name);
+      await page.getByLabel("Bài thuyết minh", { exact: false }).fill("Nội dung kiểm thử lưu ảnh.");
+      await page.getByRole("tab", { name: "EN English" }).click();
+      await page.getByLabel("Tiêu đề thuyết minh", { exact: false }).fill("Image recovery");
+      await page.getByLabel("Bài thuyết minh", { exact: false }).fill("Image persistence test narration.");
+      await page.getByRole("button", { name: "Bước 1: Thông tin địa điểm", exact: true }).click();
+      await page.getByLabel("Trạng thái hiển thị", { exact: true }).selectOption("published");
+    }
+    let creates = 0;
+    let uploads = 0;
+    let visibilityAttempts = 0;
+    let poiId = "";
+    const uploadIds: string[] = [];
+    await page.route("**/api/v1/admin/pois**", async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      if (request.method() === "POST" && url.pathname.endsWith("/pois")) {
+        creates++;
+        const response = await route.fetch();
+        poiId = (await response.json()).id;
+        return route.fulfill({ response });
+      }
+      if (request.method() === "POST" && url.pathname.endsWith("/upload")) {
+        uploads++;
+        uploadIds.push(url.searchParams.get("upload_id")!);
+        if (uploads === 1 && failure === "storage") {
+          return route.fulfill({ status: 503, json: { detail: "media_storage_unavailable" } });
+        }
+        if (uploads === 1 && failure === "upload-response") {
+          expect((await route.fetch()).status()).toBe(200);
+          return route.abort("failed");
+        }
+      }
+      if (request.method() === "PUT" && request.postDataJSON().status === "published") {
+        visibilityAttempts++;
+        if (visibilityAttempts === 1 && failure === "visibility") {
+          return route.fulfill({ status: 503, json: { detail: "temporary_failure" } });
+        }
+      }
+      return route.continue();
+    });
+    await page.getByRole("button", { name: "Lưu thay đổi", exact: true }).click();
+    await expect(page.getByRole("alert")).toContainText(failure === "storage"
+      ? "Thông tin đã lưu, ảnh chưa tải lên"
+      : failure === "upload-response" ? "Thông tin đã lưu; chưa xác nhận ảnh tải lên"
+      : "Thông tin và ảnh đã lưu; chưa xác nhận trạng thái hiển thị");
+    await expect(page.getByLabel("Tên địa điểm", { exact: false })).toHaveValue(name);
+    await expect(page.getByText("Đã lưu thay đổi.", { exact: true })).toHaveCount(0);
+    await page.screenshot({ path: `.runtime/screenshots/admin-image-${failure}-${info.project.name}.png`, fullPage: true });
+    await page.getByRole("button", { name: "Lưu thay đổi", exact: true }).click();
+    await expect(page.getByText("Đã lưu thay đổi.", { exact: true })).toBeVisible();
+    expect(creates).toBe(1);
+    expect(uploads).toBe(failure === "visibility" ? 1 : 2);
+    expect(new Set(uploadIds).size).toBe(1);
+    const history = await (await page.request.get(`/api/v1/admin/pois/${poiId}/history`)).json();
+    expect(history.events.filter((event: any) => event.action === "upload")).toHaveLength(1);
+    const saved = await (await page.request.get(`/api/v1/admin/pois/${poiId}`)).json();
+    expect(saved.image_id).toBe(uploadIds[0]);
+    expect(saved.status).toBe(failure === "visibility" ? "published" : "draft");
+    await page.keyboard.press("Escape");
+    await page.getByRole("textbox", { name: "Tìm địa điểm, địa chỉ…" }).fill(name);
+    await page.getByRole("button", { name, exact: true }).click();
+    await expect(page.getByLabel("Tên địa điểm", { exact: false })).toHaveValue(name);
+    await expect(page.locator(".image-upload img")).toBeVisible();
+  });
+}

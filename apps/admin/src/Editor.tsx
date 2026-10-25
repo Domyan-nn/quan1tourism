@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import {
   api,
+  ApiError,
   uiMessage,
   SourceAttribution,
   SpeechPlayer,
@@ -136,6 +137,12 @@ export function Editor({
     { id: string; name: string; address: string }[]
   >([]);
   const fileRef = useRef<HTMLInputElement>(null);
+  const uploadAttempt = useRef<{
+    id: string;
+    poiId: string;
+    revision: number;
+    file: File;
+  } | null>(null);
   const dirty =
     !!imageFile ||
     form.status !== saved.status ||
@@ -300,37 +307,87 @@ export function Editor({
           : "Enter the place name, address and category first.",
       );
     if (!dirty && saved.id) return saved;
-    let p = await api<Poi>(
-      saved.id ? `/admin/pois/${saved.id}` : "/admin/pois",
-      {
-        method: saved.id ? "PUT" : "POST",
-        body: JSON.stringify({
-          ...inputData(form),
-          ...(imageFile ? { status: "draft" } : {}),
-        }),
-      },
-    );
-    if (imageFile) {
-      setSaved(p);
-      setForm((current) => ({ ...current, id: p.id, revision: p.revision }));
-      const body = new FormData();
-      body.append("file", imageFile);
-      p = await api<Poi>(
-        `/admin/pois/${p.id}/upload?kind=image&revision=${p.revision}`,
-        { method: "POST", body },
-      );
-      setSaved(p);
+    let p = saved;
+    let pendingImage = imageFile;
+    let uploaded = false;
+    const checkpoint = (value: Poi) => {
+      setSaved(value);
       setForm((current) => ({
         ...current,
-        id: p.id,
-        revision: p.revision,
-        image_id: p.image_id,
+        id: value.id,
+        revision: value.revision,
+        image_id: value.image_id,
+        has_published: value.has_published,
+        narration_meta: value.narration_meta,
+        narration_review: value.narration_review,
       }));
-      p = await api<Poi>(`/admin/pois/${p.id}`, {
-        method: "PUT",
-        body: JSON.stringify({ ...inputData(form), revision: p.revision }),
-      });
+    };
+    const sendImage = async () => {
+      const attempt = uploadAttempt.current!;
+      const body = new FormData();
+      body.append("file", attempt.file);
+      try {
+        p = await api<Poi>(
+          `/admin/pois/${attempt.poiId}/upload?kind=image&revision=${attempt.revision}&upload_id=${attempt.id}`,
+          { method: "POST", body },
+        );
+      } catch (error) {
+        const cause = error as ApiError;
+        const message = cause.status === 409
+          ? vi
+            ? "Thông tin đã lưu; phiên bản đã thay đổi. Dữ liệu đang nhập và ảnh được giữ lại. Mở lại địa điểm để đối chiếu trước khi lưu tiếp."
+            : "Information was saved; the revision changed. Your form and image are preserved. Reopen the place and compare before saving again."
+          : cause.status === 0 || cause.status >= 500 && cause.status !== 503
+            ? vi
+              ? "Thông tin đã lưu; chưa xác nhận ảnh tải lên. Bấm Lưu thay đổi để kiểm tra và thử lại ảnh."
+              : "Information was saved; the image upload is unconfirmed. Save changes to check and retry the image."
+            : vi
+              ? "Thông tin đã lưu, ảnh chưa tải lên. Bấm Lưu thay đổi để thử lại ảnh."
+              : "Information was saved, but the image was not uploaded. Save changes to retry the image.";
+        throw new Error(`${message} ${cause.message}`);
+      }
+      checkpoint(p);
+      // A later visibility failure must never upload an already saved image again.
       setImageFile(null);
+      uploadAttempt.current = null;
+      pendingImage = null;
+      uploaded = true;
+    };
+    // Resolve an uncertain upload before writing further form edits. The same
+    // upload ID lets the backend acknowledge an earlier committed request.
+    if (uploadAttempt.current) await sendImage();
+    const content = (value: Poi) => JSON.stringify({ ...inputData(value), status: "draft", revision: 0 });
+    if (!p.id || content(form) !== content(p) ||
+      (pendingImage ? p.status !== "draft" : !uploaded && form.status !== p.status)) {
+      p = await api<Poi>(p.id ? `/admin/pois/${p.id}` : "/admin/pois", {
+        method: p.id ? "PUT" : "POST",
+        body: JSON.stringify({ ...inputData(form), revision: p.revision,
+          ...(pendingImage ? { status: "draft" } : {}) }),
+      });
+      checkpoint(p);
+    }
+    if (pendingImage) {
+      uploadAttempt.current = {
+        id: crypto.randomUUID().replaceAll("-", ""),
+        poiId: p.id,
+        revision: p.revision,
+        file: pendingImage,
+      };
+      await sendImage();
+    }
+    if (form.status !== p.status) {
+      try {
+        p = await api<Poi>(`/admin/pois/${p.id}`, {
+          method: "PUT",
+          body: JSON.stringify({ ...inputData(form), revision: p.revision }),
+        });
+      } catch (error) {
+        throw new Error(`${uploaded
+          ? vi ? "Thông tin và ảnh đã lưu; chưa xác nhận trạng thái hiển thị. Thử lưu lại, không cần tải lại ảnh."
+            : "Information and image were saved; visibility is unconfirmed. Save again without reuploading the image."
+          : vi ? "Thông tin đã lưu; chưa xác nhận trạng thái hiển thị. Thử lưu lại."
+            : "Information was saved; visibility is unconfirmed. Save again."} ${(error as Error).message}`);
+      }
     }
     accept(p);
     return p;
@@ -364,6 +421,12 @@ export function Editor({
           ? "Chọn JPG, PNG hoặc WebP, tối đa 10 MB."
           : "Choose JPG, PNG or WebP up to 10 MB.",
       );
+      return;
+    }
+    if (uploadAttempt.current) {
+      setError(vi
+        ? "Lần tải ảnh trước chưa được xác nhận. Bấm Lưu thay đổi để kiểm tra trước khi chọn ảnh khác."
+        : "The previous image upload is unconfirmed. Save changes to check it before choosing another image.");
       return;
     }
     setImageFile(file);
@@ -473,8 +536,8 @@ export function Editor({
           <p className="editor-autosave">
             <ShieldCheck size={15} />
             {vi
-              ? "Bản nháp chỉ hiển thị trong trang quản trị."
-              : "Drafts are visible only to your team."}
+              ? "Nội dung đến du khách khi chọn Công bố và lưu thành công."
+              : "Visitors see content after Published is selected and saved successfully."}
           </p>
         </aside>
         <div className="editor-main">
@@ -494,7 +557,20 @@ export function Editor({
                 <span>{t.demoDesc}</span>
               </div>
             )}
-            {saved.has_published && saved.status !== "published" && (
+            <div className="notice info compact" role="status">
+              <FileCheck2 size={18} />
+              <span>{dirty
+                ? vi ? "Đang sửa thay đổi chưa lưu." : "Editing unsaved changes."
+                : vi ? `Đang xem bản đã lưu · phiên bản ${saved.revision}.`
+                  : `Viewing saved content · revision ${saved.revision}.`}
+                {" "}{saved.has_published
+                  ? vi ? "Du khách đang xem bản công khai đã lưu gần nhất."
+                    : "Visitors see the last saved public version."
+                  : vi ? "Chưa có bản công khai; lưu nháp để kiểm tra, rồi chọn Công bố và lưu khi đã duyệt."
+                    : "No public version exists; save a draft to review, then select Published and save after approval."}
+              </span>
+            </div>
+            {saved.has_published && (saved.status !== "published" || dirty) && (
               <div className="notice info compact">
                 <GlobeIcon />
                 <span>

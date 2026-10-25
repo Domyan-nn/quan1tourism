@@ -3,7 +3,9 @@
 Các workflow đã được chuẩn bị trong repo; chưa thực thi trên cloud trong nhiệm vụ này.
 Chỉ người phụ trách có quyền mới bật cấu hình dưới đây. Không tạo DB/service production mới, không đổi domain.
 
-Mã mới dùng schema `0009`, PC worker protocol `2`; chưa áp dụng lên cloud trong đợt GPS/TTS/bản dịch này.
+Nguồn tương thích hiện tại là [release-metadata.json](../services/backend/app/release-metadata.json):
+schema `0010`, PC worker protocol `3`. API, readiness và release manifest cùng đọc nguồn này.
+Chưa áp dụng mã/schema mới lên cloud trong nhiệm vụ ngày 25/10/2026.
 Backup DB/media và đối chiếu source trước migration; cập nhật/restart PC bằng thao tác riêng của owner.
 Không tự phục hồi tên danh mục production từ dấu hỏi: danh sách ID/nguồn đối chiếu nằm local trong `.runtime/category-repair-review.json` và còn chờ xác minh.
 Xem [NARRATION-GPS.md](NARRATION-GPS.md) cho cách dùng, sửa danh mục trên restore và giới hạn rollback binary 0008.
@@ -27,7 +29,8 @@ Xem [NARRATION-GPS.md](NARRATION-GPS.md) cho cách dùng, sửa danh mục trên
 5. Render environment: kiểm tra PostgreSQL TLS, migration owner, DB thật, MEDIA_ROOT và disk bền vững hiện có.
    Staging cần DB/media/origin/service/credential riêng do owner cấp; nếu chưa có thì workflow dừng ở preflight.
    Không tự mua plan/disk hoặc tạo cloud service trong nhiệm vụ này. Kiểm tra major PostgreSQL cloud bằng `SHOW server_version`;
-   Cloud đã đọc phiên bản 17.11, revision 0008; CI chuẩn bị matrix 17/18, local có bằng chứng chạy 18.6.
+   Bằng chứng lịch sử trong repo ghi cloud 17.11, revision 0008; trạng thái cloud hiện tại chưa xác minh.
+   CI chuẩn bị matrix 17/18, local có bằng chứng chạy 18.6.
    Kiểm tra PostGIS, quyền extension và kết quả cả hai major trong CI trước release.
 6. Cloudflare → Workers & Pages → chọn Worker hiện có → Settings → Builds: ngắt Git integration hoặc tắt automatic builds/deploys
    cho production và staging. Tắt Pages auto deployment nếu vẫn còn project phụ cùng domain.
@@ -41,6 +44,12 @@ Xem [NARRATION-GPS.md](NARRATION-GPS.md) cho cách dùng, sửa danh mục trên
    Nếu env-vars API không trả đủ cấu hình (ví dụ cấu hình nhóm chưa được hỗ trợ), dừng và rà soát bằng owner, không bỏ gate.
 8. Tạo fixture công khai **riêng staging** qua admin và kiểm tra nội dung/ảnh/TTS. Không seed demo trên production.
    Public smoke yêu cầu có ít nhất một POI đã xuất bản. DB rỗng chỉ được bỏ qua trong Docker CI tạm.
+   Mẫu nội dung đã chuẩn bị ở [fixtures/staging-place.json](fixtures/staging-place.json): chọn category ID
+   thật của staging, tạo **một bản nháp** qua admin, xem lại VI/EN rồi công bố chủ động.
+   Fixture ghi rõ dữ liệu giả; tọa độ mặc định trống và GPS tắt. Để thử GPS, nhập tọa độ điểm kiểm tra
+   đang đứng trên staging và bán kính đã chọn, không dùng địa điểm giả làm dữ liệu du lịch.
+   Upload ảnh thử do người kiểm tra sở hữu; giữ bucket/path staging riêng. Tái sử dụng fixture khi chạy lại,
+   tìm tên trước khi tạo để tránh bản ghi trùng. File này không được script release tự seed.
 
 Ghi ngày, người kiểm tra, existing resource IDs, major DB, disk/media và trạng thái auto-deploy vào inventory hạn chế.
 Repo không chứng minh settings dashboard đã được áp dụng. Đừng đặt `CLOUDFLARE_CONFIG_REVIEWED=true` trước bước 6.
@@ -62,6 +71,9 @@ Repo không chứng minh settings dashboard đã được áp dụng. Đừng đ
    Smoke origin công khai dùng `--worker`, kiểm tra `/`, `/admin/`, JS/CSS sau build, live/ready, API/frontend/Worker release,
    danh sách/chi tiết public không lộ thống kê, khách bị từ chối admin, cookie/no-store, tile PNG và tọa độ sai 404.
    Upstream tile/API lỗi được kiểm thử bằng mock trong CI; không cố tình làm hỏng upstream cloud để tạo lỗi.
+   Smoke retry tối đa 5 lần mỗi GET, chờ 2 giây khi lỗi mạng/tạm thời hoặc release chưa lan truyền.
+   SHA API/frontend/Worker vẫn phải đúng sau retry; 200 của bản cũ không được coi là thành công.
+   Chỉ retry GET: không tự trigger lại deploy, migration hoặc ghi sự kiện thống kê.
 7. Chỉ sau smoke mới có `staging-receipt`. Receipt ghi SHA, CI run, manifest digest, revision trước/sau,
    backup inventory ID, Render trước/sau, Worker deployment/version trước/sau và worker protocol.
    Owner kiểm tra readiness khi PC worker offline vẫn thành công. AI generation không nằm trong public readiness.
@@ -84,6 +96,7 @@ Repo không chứng minh settings dashboard đã được áp dụng. Đừng đ
 ## Khi lỗi hoặc runner bị ngắt
 
 Không trigger lại Render một cách mù quáng. Tải artifact `*-reconcile-*`, lấy deploy ID và migration progress,
+đọc `.runtime/preflight.json` nếu chưa đến bước deploy (mã lỗi và tên setting, không có giá trị secret),
 đối chiếu Render dashboard + `alembic_version` + advisory lock bằng công cụ hạn chế.
 Nếu poll timeout mà Render vẫn deploy, chờ trạng thái cuối; không suy từ timeout rằng deploy đã hủy.
 Nếu migration đã thành công còn deploy lỗi, giữ schema mở rộng và rollback ứng dụng theo runbook.

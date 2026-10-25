@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type ScrollViewInstance } from "react-native";
+import { ActivityIndicator, BackHandler, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type ScrollViewInstance } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
-import MapView, { Marker } from "react-native-maps";
+import MapView, { Marker, type Region } from "react-native-maps";
 import * as Speech from "expo-speech";
 import * as SecureStore from "expo-secure-store";
 import { getCategoryLabel, type Language, type Poi, type PublicCategory, type User } from "@quan1/contracts";
@@ -46,7 +46,10 @@ function Visitor() {
   const selected = places.find(p => p.id === selectedId);
   const translation = selected?.translations[locale];
   const scroll = useRef<ScrollViewInstance>(null);
+  const listScroll = useRef(0);
+  const restoreScroll = useRef<number | null>(null);
   const map = useRef<MapView>(null);
+  const mapRegion = useRef<Region>({latitude: 10.7769, longitude: 106.7009, latitudeDelta: 0.035, longitudeDelta: 0.035});
   const gps = useGps(loading || error ? [] : places, locale, () => narrator.busy, poi => {
     setSelectedId(poi.id); setDetail(false); setView("map");
     void engagement(poi.id, "view");
@@ -93,6 +96,14 @@ function Visitor() {
     }).catch(() => { if (!cancelled) {setError(true); setLoading(false);} });
     return () => { cancelled = true; };
   }, [locale, retry]);
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (!detail && !selectedId) return false;
+      back();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [detail, selectedId]);
   function changeUi() {
     const next = vi ? "en" : "vi";
     setUiLocale(next); void SecureStore.setItemAsync("quan1.ui", next).catch(() => {});
@@ -103,8 +114,8 @@ function Visitor() {
   }
   function open(poi: Poi, full: boolean) {
     void narrator.stop().catch(() => {});
+    if (full && !detail) restoreScroll.current = 0;
     setSelectedId(poi.id); setDetail(full); void engagement(poi.id, "view");
-    if (full) scroll.current?.scrollTo({y: 0, animated: true});
   }
   function play(poi: Poi) {
     const text = poi.translations[locale];
@@ -113,14 +124,23 @@ function Visitor() {
       gps.started(poi.id); void engagement(poi.id, "listen");
     });
   }
-  function back() { void narrator.stop().catch(() => {}); setDetail(false); setSelectedId(null); }
-  const normalize = (text: string) => text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[đĐ]/g, "d").toLocaleLowerCase();
+  function back() {
+    void narrator.stop().catch(() => {});
+    if (detail) restoreScroll.current = listScroll.current;
+    setDetail(false); setSelectedId(null);
+  }
+  const normalize = (text: string) => text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[đĐ]/g, "d").toLocaleLowerCase().trim().replace(/\s+/g, " ");
   const filtered = places.filter(p => (!category || p.category_id === category) &&
     normalize(`${p.name} ${p.address} ${p.translations[locale]?.title ?? ""}`).includes(normalize(query.trim())));
   const gpsMessages: Record<string, [string, string]> = {
     idle: ["GPS đang tắt. Bật để xem vị trí và tự nghe gần địa điểm.", "GPS is off. Enable it for your location and nearby stories."],
     locating: ["Đang tìm vị trí…", "Finding your location…"],
     ready: ["GPS sẵn sàng · Tự nghe khi ở gần đủ lâu", "GPS ready · Stories start after a short stay nearby"],
+    "no-nearby": ["Chưa có địa điểm bật tự thuyết minh đủ gần. GPS xét mọi địa điểm công khai, kể cả ngoài bộ lọc tìm kiếm.", "No enabled story is close enough. GPS checks every public place, including those outside your search filters."],
+    "missing-content": ["Địa điểm gần bạn chưa có thuyết minh bằng ngôn ngữ đã chọn. Hãy chọn ngôn ngữ khác.", "Nearby places have no narration in your selected language. Choose another language."],
+    dwelling: ["Đang xác nhận bạn ở trong vùng. Hãy chờ vị trí mới để tự nghe.", "Confirming your stay in the area. Waiting for fresh location samples."],
+    busy: ["Đang có bài nghe. GPS sẽ đợi để không ngắt bài hiện tại.", "A story is already playing. GPS will wait without interrupting it."],
+    cooldown: ["Bài ở gần đã được kích hoạt. Rời vùng và chờ trước khi tự nghe lại; bạn vẫn có thể nghe thủ công.", "Nearby stories have already been triggered. Leave the area and wait before automatic replay; manual playback is still available."],
     denied: ["Chưa được cấp quyền vị trí. Bạn có thể bật quyền trong cài đặt thiết bị.", "Location permission denied. You can enable it in device settings."],
     accuracy: ["Độ chính xác thấp. Hãy đến nơi thoáng hơn; chưa tự phát.", "Low accuracy. Move to an open area; automatic playback is waiting."],
     stale: ["Vị trí đã cũ. Đang chờ vị trí mới.", "Location is old. Waiting for a fresh fix."],
@@ -156,8 +176,15 @@ function Visitor() {
     </View>;
   }
   return <SafeAreaView style={s.screen}>
-    <ScrollView ref={scroll} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
-      <View style={s.header}><Text accessibilityRole="header" style={s.logo}>saigon<Text style={{fontWeight: "400"}}>stories.</Text></Text><Button onPress={changeUi}>{vi ? "English" : "Tiếng Việt"}</Button></View>
+    <ScrollView ref={scroll} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled" scrollEventThrottle={16}
+      onScroll={event => { if (!detail) listScroll.current = event.nativeEvent.contentOffset.y; }}
+      onContentSizeChange={() => {
+        if (restoreScroll.current !== null) {
+          scroll.current?.scrollTo({y: restoreScroll.current, animated: false});
+          restoreScroll.current = null;
+        }
+      }}>
+      <View style={s.header}><Text accessibilityRole="header" style={s.logo}>saigon<Text style={{fontWeight: "400"}}>stories.</Text></Text><View style={s.interfaceLanguage}><Text style={s.small}>{vi ? "Ngôn ngữ giao diện" : "Interface language"}</Text><Button onPress={changeUi}>{vi ? "English" : "Tiếng Việt"}</Button></View></View>
       <Account user={user} setUser={value => {
         authRevision.current++; setUser(value); setSessionError(false);
       }} vi={vi}/>
@@ -181,7 +208,7 @@ function Visitor() {
           </View>}
         </> : <>
           <View style={s.hero}><Text style={s.eyebrow}>{vi ? "LẮNG NGHE SÀI GÒN" : "LISTEN TO SAIGON"}</Text><Text accessibilityRole="header" style={s.title}>{vi ? "Sài Gòn, qua từng câu chuyện." : "Saigon, told one story at a time."}</Text><Text style={s.body}>{vi ? "Khám phá Quận 1. Chọn một địa điểm và nghe câu chuyện theo nhịp bước của bạn." : "Explore District 1. Choose a place and hear its story at your own pace."}</Text></View>
-          <TextInput style={s.input} placeholder={vi ? "Tìm địa điểm, địa chỉ…" : "Search places, addresses…"} placeholderTextColor="#65775f" value={query} onChangeText={setQuery} accessibilityLabel={vi ? "Tìm địa điểm" : "Search places"}/>
+          <View style={s.search}><TextInput style={[s.input, s.searchInput]} placeholder={vi ? "Tìm địa điểm, địa chỉ…" : "Search places, addresses…"} placeholderTextColor="#65775f" value={query} onChangeText={setQuery} accessibilityLabel={vi ? "Tìm địa điểm" : "Search places"}/>{!!query && <Button onPress={() => setQuery("")}>{vi ? "Xóa tìm kiếm" : "Clear search"}</Button>}</View>
           <View style={s.row}><Button active={!category} onPress={() => setCategory("")}>{vi ? "Tất cả" : "All"}</Button>{categories.map(c => <Button key={c.id} active={category === c.id} onPress={() => setCategory(c.id)}>{getCategoryLabel(c, uiLocale)}</Button>)}</View>
           <View style={s.row}><Button active={view === "list"} onPress={() => setView("list")}>{vi ? "Danh sách" : "List"}</Button><Button active={view === "map"} onPress={() => setView("map")}>{vi ? "Bản đồ" : "Map"}</Button></View>
           <View style={s.notice}>
@@ -190,7 +217,7 @@ function Visitor() {
             {gps.fix && <Text style={s.small}>{vi ? "Vị trí" : "Location"}: {gps.fix.latitude.toFixed(5)}, {gps.fix.longitude.toFixed(5)} · {Number.isFinite(gps.fix.accuracy) ? `±${Math.round(gps.fix.accuracy)} m` : vi ? "Chưa rõ độ chính xác" : "Accuracy unavailable"}</Text>}
           </View>
           {view === "map" && <>
-            <MapView ref={map} accessibilityLabel={vi ? "Bản đồ địa điểm" : "Places map"} style={s.map} initialRegion={{latitude: 10.7769, longitude: 106.7009, latitudeDelta: 0.035, longitudeDelta: 0.035}}>
+            <MapView ref={map} accessibilityLabel={vi ? "Bản đồ địa điểm" : "Places map"} style={s.map} initialRegion={mapRegion.current} onRegionChangeComplete={region => { mapRegion.current = region; }}>
               {filtered.filter(p => p.latitude !== null && p.longitude !== null).map(p => <Marker key={p.id} coordinate={{latitude: p.latitude!, longitude: p.longitude!}} title={p.translations[locale]?.title || p.name} description={p.address} pinColor="#31523d" onPress={() => open(p, false)}/>)}
               {gps.fix && fixProblem(gps.fix, Date.now()) === "ready" && <Marker coordinate={gps.fix} title={vi ? "Vị trí của bạn" : "Your location"} pinColor="#297cca"/>}
             </MapView>
@@ -202,9 +229,9 @@ function Visitor() {
             <Text style={s.small}>{vi ? "Chạm ghim để xem và nghe câu chuyện. Địa điểm chưa có tọa độ vẫn có trong danh sách." : "Tap a pin to view and listen. Places without coordinates remain in the list."}</Text>
             {selected && <View style={s.card}><Text style={s.cardTitle}>{selected.translations[locale]?.title || selected.name}</Text><Text style={s.body}>{selected.address} · {distance(selected)}</Text>{player(selected)}<Button onPress={() => open(selected, true)}>{vi ? "Xem toàn bộ bài" : "Read full story"}</Button><Button onPress={back}>{vi ? "Đóng" : "Close"}</Button></View>}
           </>}
-          {!filtered.length && <Text style={s.empty}>{places.length ? (vi ? "Không tìm thấy địa điểm phù hợp." : "No matching places.") : (vi ? "Chưa có địa điểm được công bố." : "No published places yet.")}</Text>}
+          {!filtered.length && <View style={s.empty}><Text style={s.body}>{places.length ? (vi ? "Không tìm thấy địa điểm phù hợp. Thử từ khóa khác hoặc bỏ bộ lọc." : "No matching places. Try another query or clear the filters.") : (vi ? "Chưa có địa điểm được công bố. Bạn có thể thử tải lại sau." : "No published places yet. You can reload later.")}</Text>{!!places.length && <Button onPress={() => {setQuery(""); setCategory("");}}>{vi ? "Xóa tìm kiếm và bộ lọc" : "Clear search and filters"}</Button>}</View>}
           {view === "list" && filtered.map(p => <Pressable key={p.id} style={s.card} accessibilityRole="button" accessibilityLabel={p.translations[locale]?.title || p.name} onPress={() => open(p, true)}>
-            {cover(p)}<Text style={s.eyebrow}>{getCategoryLabel(categories.find(c => c.id === p.category_id), uiLocale)}</Text><Text style={s.cardTitle}>{p.translations[locale]?.title || p.name}</Text><Text style={s.body}>{p.address}</Text>{!!distance(p) && <Text style={s.small}>{distance(p)}</Text>}<Text style={s.label}>{vi ? "Khám phá câu chuyện →" : "Explore this story →"}</Text>
+            {cover(p)}<Text style={s.eyebrow}>{getCategoryLabel(categories.find(c => c.id === p.category_id), uiLocale)}</Text><Text style={s.cardTitle}>{p.translations[locale]?.title || p.name}</Text><Text style={s.body}>{p.address}</Text>{(p.latitude === null || p.longitude === null) && <Text style={s.small}>{vi ? "Chưa có tọa độ · Bạn vẫn có thể đọc và nghe bài." : "Coordinates unavailable · You can still read and listen."}</Text>}{!!distance(p) && <Text style={s.small}>{distance(p)}</Text>}<Text style={s.label}>{vi ? "Khám phá câu chuyện →" : "Explore this story →"}</Text>
           </Pressable>)}
         </>}
       <Text style={s.footer}>SAIGON STORIES · {vi ? "Bước chậm lại, nghe nhiều hơn." : "Walk slowly. Hear more."}</Text>
@@ -215,6 +242,7 @@ export default function App() { return <SafeAreaProvider><Visitor/></SafeAreaPro
 const s = StyleSheet.create({
   screen: {flex: 1, backgroundColor: "#f8faf3"}, content: {padding: 20, gap: 16, paddingBottom: 40},
   header: {flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10},
+  interfaceLanguage: {gap: 6}, search: {flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8}, searchInput: {flexGrow: 1, flexShrink: 1, flexBasis: 220},
   logo: {fontSize: 25, fontWeight: "700", color: "#31523d", letterSpacing: -1},
   row: {flexDirection: "row", flexWrap: "wrap", gap: 8}, languageRow: {gap: 8, paddingVertical: 4},
   button: {minHeight: 46, paddingVertical: 12, paddingHorizontal: 15, borderRadius: 24, borderWidth: 1, borderColor: "#a6b793", alignItems: "center", justifyContent: "center", backgroundColor: "#ffffff", flexShrink: 1},

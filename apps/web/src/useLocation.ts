@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { GPS, distanceM, fixProblem, Geofence, type Fix } from "./geofencing";
+import { GPS, fixProblem, Geofence, type Fix } from "./geofencing";
 import type { Poi } from "@quan1/contracts";
 import { isSpeechBusy } from "@quan1/api-client";
 
@@ -55,24 +55,11 @@ export function useLocation(
       accuracy: position.coords.accuracy,
       timestamp: position.timestamp,
     };
-    setFix(point);
-    let problem = fixProblem(point, Date.now());
-    if (
-      problem === "ready" &&
-      latest.current.places.some(
-        (p) =>
-          p.auto_narration_enabled &&
-          p.latitude !== null &&
-          p.longitude !== null &&
-          distanceM(point, { latitude: p.latitude, longitude: p.longitude }) <=
-            (p.trigger_radius_m ?? 100) &&
-          point.accuracy > (p.trigger_radius_m ?? 100) / 2,
-      )
-    )
-      problem = "accuracy";
+    const problem = fixProblem(point, Date.now());
+    if (problem !== "unavailable") setFix(point);
     if (document.hidden || point.timestamp < visibleAt.current) {
       fence.current.reset();
-      setStatus("stale");
+      if (latest.current.enabled) setStatus("stale");
       return;
     }
     setStatus(problem);
@@ -87,6 +74,10 @@ export function useLocation(
       );
       const poi = current.places.find((p) => p.id === id);
       if (poi) current.onAuto(poi);
+      else if (problem === "ready") {
+        const diagnosis = fence.current.diagnose(point, current.places, current.locale, Date.now(), isSpeechBusy());
+        setStatus(diagnosis === "no-nearby" ? "nearby" : diagnosis === "missing-content" ? "missing" : diagnosis);
+      }
     }
   };
   function locate() {
@@ -136,11 +127,11 @@ export function useLocation(
     const visibility = () => {
       visibleAt.current = Date.now();
       fence.current.reset();
-      setStatus("stale");
+      if (latest.current.enabled) setStatus("stale");
     };
     document.addEventListener("visibilitychange", visibility);
     const timer = setInterval(() => {
-      if (fix && Date.now() - fix.timestamp > GPS.staleMs) {
+      if (latest.current.enabled && fix && Date.now() - fix.timestamp > GPS.staleMs) {
         fence.current.reset();
         setStatus("stale");
       }
@@ -166,8 +157,10 @@ export function useLocation(
     toggle: () => {
       if (!enabled && !ready()) return;
       if (enabled) {
+        latest.current.enabled = false;
         clear();
         window.dispatchEvent(new Event("quan1-speech-stop-auto"));
+        setStatus("idle");
       }
       setEnabled(!enabled);
     },

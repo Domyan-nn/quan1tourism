@@ -21,8 +21,9 @@ from app.translation_validation import ERROR_CODES  # noqa: E402
 
 
 def server_url(value):
+    value = value.strip()
     parsed = urlsplit(value)
-    if (parsed.scheme != "https" and not (
+    if not parsed.hostname or (parsed.scheme != "https" and not (
         parsed.scheme == "http" and parsed.hostname in {"127.0.0.1", "localhost"}
     )) or parsed.username or parsed.password or parsed.query or parsed.fragment or parsed.path not in {"", "/"}:
         raise ValueError("AI_SERVER_URL must be an HTTPS origin, or http://127.0.0.1:8000 for local testing.")
@@ -104,7 +105,7 @@ def run(origin, token, *, once=False):
                                       else "AI task failed: " + ",".join(c for c in outcome.get("issue_codes", []) if c in ERROR_CODES), flush=True)
                                 break
                             except HTTPError as exc:
-                                if exc.code in {401, 403, 409, 422}:
+                                if exc.code not in {408, 425, 429, 500, 502, 503, 504}:
                                     print(f"Result was rejected (HTTP {exc.code}).", flush=True)
                                     break
                                 if attempt < 2:
@@ -112,6 +113,8 @@ def run(origin, token, *, once=False):
                             except Exception:
                                 if attempt < 2:
                                     stopped.wait(2 ** attempt)
+                        else:
+                            print("Completion was not confirmed after 3 attempts. Check the task status before retrying.", flush=True)
                         current.clear()
                         if not once:
                             continue  # No five-second delay between queued tasks.

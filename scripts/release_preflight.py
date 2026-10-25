@@ -19,15 +19,15 @@ SECRETS = ("DATABASE_URL", "RENDER_API_KEY", "CLOUDFLARE_API_TOKEN")
 
 class PreflightError(ValueError):
     """Only static diagnostics and setting NAMES may enter runner output."""
-    def __init__(self, message, keys=()):
-        self.message, self.keys = message, tuple(keys)
+    def __init__(self, message, keys=(), code="configuration_invalid"):
+        self.message, self.keys, self.code = message, tuple(keys), code
         super().__init__(message + (": " + ", ".join(self.keys) if self.keys else ""))
 
 
 def require_settings(environment, names):
     missing = [key for key in names if not str(environment.get(key) or "").strip()]
     if missing:
-        raise PreflightError("Missing GitHub deployment settings", missing)
+        raise PreflightError("Missing GitHub deployment settings", missing, "settings_missing")
 
 
 def configuration_only(environment):
@@ -47,7 +47,11 @@ def database_identity(value):
     if url.get_backend_name() not in {"postgres", "postgresql"}:
         raise PreflightError("PostgreSQL required", ("DATABASE_URL",))
     # A Supabase pooler shares host/database between projects, so include username.
-    parts = [url.host, url.port or 5432, url.database, url.username]
+    # libpq query parameters can override the URI target. Reject ambiguous DSNs
+    # rather than attest one host/database and connect migrations to another.
+    if set(url.query) & {"host", "hostaddr", "port", "dbname", "user", "service", "servicefile"}:
+        raise PreflightError("Connection target overrides are not allowed", ("DATABASE_URL",), "database_target_ambiguous")
+    parts = [(url.host or "").lower().rstrip("."), url.port or 5432, url.database, url.username]
     return hashlib.sha256(json.dumps(parts, separators=(",", ":")).encode()).hexdigest()
 
 
@@ -74,12 +78,20 @@ def validate(environment):
                 parsed = urlsplit(value)
                 if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password or parsed.path not in {"", "/"} or parsed.query or parsed.fragment:
                     raise PreflightError("HTTPS origins required", (local_key, "PRODUCTION_" + key))
-            left, right = left.rstrip("/"), right.rstrip("/")
+            # Origins are case-insensitive and the default HTTPS port is 443.
+            # Comparing input strings would allow the same production origin
+            # to masquerade as staging through case or an explicit default port.
+            try:
+                left, right = [(urlsplit(value).hostname.lower().rstrip("."), urlsplit(value).port or 443)
+                               for value in (left, right)]
+            except ValueError:
+                raise PreflightError("Invalid HTTPS origin port", (local_key, "PRODUCTION_" + key)) from None
         comparisons.append((left, right))
     if any((left == right) != production for left, right in comparisons):
         conflicts = ["DATABASE_IDENTITY", "BACKEND_ORIGIN", "PUBLIC_ORIGIN", "RENDER_SERVICE_ID", "CLOUDFLARE_WORKER_NAME"]
         raise PreflightError("Staging resources must be separate; production must match its inventory",
-                             [key for key, (left, right) in zip(conflicts, comparisons) if (left == right) != production])
+                             [key for key, (left, right) in zip(conflicts, comparisons) if (left == right) != production],
+                             "resource_isolation")
     if environment.get("MIGRATION_APPROVED") != "true" or not re.fullmatch(
         r"[A-Za-z0-9_.:/-]{3,200}", environment.get("BACKUP_REFERENCE", "")
     ):
@@ -109,10 +121,24 @@ def main():
     print("Environment isolation and release preflight passed.")
 
 
+def report(status, code, keys=()):
+    """Exists even when configuration fails before install or deploy files exist."""
+    target = os.environ.get("RELEASE_ENVIRONMENT")
+    value = {"status": status, "code": code, "keys": list(keys),
+             "environment": target if target in {"staging", "production"} else "unknown"}
+    try:
+        path = Path(".runtime/preflight.json")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+    except OSError:
+        pass
+
+
 def run():
     try:
         main()
     except PreflightError as error:
+        report("failed", error.code, error.keys)
         message = "Preflight failed: " + str(error) + ". Values are not displayed."
         print(message, file=sys.stderr)
         target = os.environ.get("RELEASE_ENVIRONMENT")
@@ -131,8 +157,10 @@ def run():
                 pass
         return 1
     except Exception:
+        report("failed", "configuration_invalid")
         print("Preflight failed: invalid resource configuration or release evidence. No credentials emitted.", file=sys.stderr)
         return 1
+    report("passed", "configuration_present" if sys.argv[1:] == ["--configuration-only"] else "preflight_passed")
     return 0
 
 

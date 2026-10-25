@@ -110,6 +110,47 @@ test("native errors release the playback lock for a later article", async () => 
   assert.equal(calls[1].text, "Second");
 });
 
+test("native terminal callbacks cannot duplicate chunks or revive a failed narration", async () => {
+  const { narrator, calls, states } = speech();
+  const text = "A complete sentence for a long narration. ".repeat(20);
+  let listens = 0;
+  await narrator.play(text, "en-US", () => listens++);
+  const first = calls[0].options;
+  first.onStart();
+  first.onDone();
+  assert.equal(calls.length, 2);
+  first.onDone();
+  first.onStopped();
+  first.onError();
+  assert.equal(calls.length, 2);
+  assert.equal(narrator.busy, true);
+  assert.equal(states.at(-1), "speaking");
+  const second = calls[1].options;
+  second.onError();
+  second.onDone();
+  second.onStart();
+  assert.equal(calls.length, 2);
+  assert.equal(narrator.busy, false);
+  assert.equal(states.at(-1), "error");
+  assert.equal(listens, 1);
+});
+
+test("a native device failure while starting a later chunk is reported and releases the lock", async () => {
+  let count = 0;
+  const calls = [], states = [];
+  const port = { stop: async () => {}, voices: async () => voices,
+    speak: (_text, options) => {
+      if (count++) throw new Error("Device TTS unavailable");
+      calls.push({options});
+    },
+  };
+  const playback = new Narrator(port, state => states.push(state));
+  await playback.play("A complete sentence for a long narration. ".repeat(20), "en-US", () => {});
+  assert.doesNotThrow(() => calls[0].options.onDone());
+  assert.equal(playback.busy, false);
+  assert.equal(states.at(-1), "error");
+});
+
 test("mobile shares backend radius, dwell, fix quality, overlap and cooldown behavior", () => {
   const fence = new Geofence();
   const place = (id, longitude, radius = 60) => ({ id, latitude: 0, longitude,
@@ -129,6 +170,26 @@ test("mobile shares backend radius, dwell, fix quality, overlap and cooldown beh
   assert.equal(fence.offer(point(13000), places, "en", 13000, false), null);
   assert.equal(fence.offer(point(18000), places, "en", 18000, true), null);
   assert.equal(fence.offer(point(19000), places, "vi", 19000, false), null);
+});
+
+test("GPS explains unavailable content, dwell and manual playback without changing fence decisions", () => {
+  const fence = new Geofence();
+  const place = {id: "story", latitude: 0, longitude: 0, trigger_radius_m: 60,
+    auto_narration_enabled: true, translations: {en: {text: "A story", tts_ready: true}}};
+  const point = timestamp => ({latitude: 0, longitude: 0, accuracy: 5, timestamp});
+  assert.equal(fence.offer(point(1000), [], "en", 1000, false), null);
+  assert.equal(fence.diagnose(point(1000), [], "en", 1000, false), "no-nearby");
+  assert.equal(fence.diagnose(point(1000), [place], "vi", 1000, false), "missing-content");
+  assert.equal(fence.offer(point(1000), [place], "en", 1000, true), null);
+  assert.equal(fence.diagnose(point(1000), [place], "en", 1000, true), "busy");
+  assert.equal(fence.offer(point(2000), [place], "en", 2000, false), null);
+  assert.equal(fence.diagnose(point(2000), [place], "en", 2000, false), "dwelling");
+  // Reading feedback cannot advance the dwell or consume a pending trigger.
+  assert.equal(fence.diagnose(point(7000), [place], "en", 7000, false), "dwelling");
+  assert.equal(fence.offer(point(7000), [place], "en", 7000, false), "story");
+  fence.started("story", 7000);
+  assert.equal(fence.diagnose(point(8000), [place], "en", 8000, false), "cooldown");
+  assert.equal(fence.diagnose({...point(8000), accuracy: 40}, [place], "en", 8000, false), "accuracy");
 });
 
 // Compile the real API module while replacing only native storage/crypto and HTTP.

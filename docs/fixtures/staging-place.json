@@ -1,0 +1,21 @@
+{
+  "name": "STAGING QA – Điểm kiểm tra Saigon Stories",
+  "address": "Dữ liệu giả dành riêng cho staging, không phải hướng dẫn du lịch",
+  "short_description": "Fixture thủ công để nghiệm thu tìm kiếm, chi tiết, thuyết minh và công bố trên staging riêng.",
+  "status": "draft",
+  "category_id": "<select-existing-staging-category-id>",
+  "latitude": null,
+  "longitude": null,
+  "trigger_radius_m": 100,
+  "auto_narration_enabled": false,
+  "translations": {
+    "vi": {
+      "title": "Điểm kiểm tra trên staging",
+      "text": "Đây là nội dung thử nghiệm của Saigon Stories trên môi trường staging. Nội dung này dùng để kiểm tra tìm kiếm không dấu, quay lại danh sách và đọc đầy đủ nhiều đoạn. Đây không phải thông tin du lịch đã được xác minh.\n\nĐoạn thứ hai dùng để xác nhận giọng đọc tiếp tục đúng thứ tự, không bỏ hoặc lặp nội dung. Người kiểm tra cần nghe hết bài trước khi ghi kết quả."
+    },
+    "en": {
+      "title": "Staging verification place",
+      "text": "This is synthetic Saigon Stories content for the isolated staging environment. It is used to check search, returning to the list, and narration across paragraphs. It is not verified travel information.\n\nThe second paragraph checks that narration continues in order without skipped or repeated content. Listen to the whole passage before recording the result."
+    }
+  }
+}

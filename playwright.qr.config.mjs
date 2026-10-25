@@ -4,6 +4,7 @@ import { defineConfig } from "@playwright/test";
 const expoUrl = process.env.QR_TEST_EXPO_URL || "exp://192.0.2.10:8081";
 export default defineConfig({
   testDir: "./tests/qr",
+  outputDir: ".runtime/qr-test-results",
   workers: 1,
   timeout: 30000,
   reporter: "list",

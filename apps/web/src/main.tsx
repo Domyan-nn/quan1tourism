@@ -10,6 +10,7 @@ import {
   List,
   Search,
   Volume2,
+  X,
 } from "lucide-react";
 import {
   api,
@@ -25,6 +26,8 @@ import { AuthControls } from "./Auth";
 import { MapExplorer } from "./MapExplorer";
 import { MobileAppCard } from "./MobileAppCard";
 import { expoGoUrl } from "./expo-link";
+import { useVisitorNavigation } from "./navigation";
+import { normalizeSearch } from "./search";
 import "@fontsource/be-vietnam-pro/400.css";
 import "@fontsource/be-vietnam-pro/500.css";
 import "@fontsource/be-vietnam-pro/600.css";
@@ -45,11 +48,11 @@ function Visitor() {
   const [categories, setCategories] = useState<PublicCategory[]>([]);
   const [languageError, setLanguageError] = useState("");
   const [pois, setPois] = useState<Poi[]>([]);
-  const [selected, setSelected] = useState<Poi | null>(null);
-  const [view, setView] = useState<"list" | "map">("list");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [query, setQuery] = useState("");
+  const navigation = useVisitorNavigation(loading);
+  const { query, view, setQuery, setView } = navigation;
+  const selected = pois.find((poi) => poi.id === navigation.poi) ?? null;
   const [retry, setRetry] = useState(0);
   const [online, setOnline] = useState(navigator.onLine);
   const vi = uiLocale === "vi";
@@ -99,18 +102,10 @@ function Visitor() {
     let ignore = false;
     setLoading(true);
     setError("");
-    setSelected(null);
-    const id = new URLSearchParams(location.search).get("poi");
-    (id
-      ? api<Poi>(`/pois/${encodeURIComponent(id)}?locale=${locale}`).then(
-          (p) => ({ items: [p] }),
-        )
-      : api<{ items: Poi[] }>(`/pois?locale=${locale}`)
-    )
+    api<{ items: Poi[] }>(`/pois?locale=${encodeURIComponent(locale)}`)
       .then((data) => {
         if (!ignore) {
           setPois(data.items);
-          if (id) setSelected(data.items[0]);
         }
       })
       .catch((e) => {
@@ -124,21 +119,19 @@ function Visitor() {
     };
   }, [locale, language?.code, retry]);
   const narration = selected?.translations[locale];
+  useEffect(() => {
+    if (selected) recordEngagement(selected.id, "view");
+  }, [selected?.id]);
+  const search = normalizeSearch(query);
   const list = pois.filter((p) =>
-    `${p.name} ${p.address} ${p.translations[locale]?.title ?? ""}`
-      .toLocaleLowerCase()
-      .includes(query.toLocaleLowerCase()),
+    normalizeSearch(`${p.name} ${p.address} ${p.translations[locale]?.title ?? ""}`)
+      .includes(search),
   );
   function back() {
-    setSelected(null);
-    history.replaceState(null, "", location.pathname);
-    setRetry((n) => n + 1);
+    navigation.back();
   }
   function openDetail(poi: Poi) {
-    setSelected(poi);
-    recordEngagement(poi.id, "view");
-    history.replaceState(null, "", `?poi=${encodeURIComponent(poi.id)}`);
-    window.scrollTo(0, 0);
+    navigation.open(poi.id);
   }
   return (
     <>
@@ -159,6 +152,7 @@ function Visitor() {
           </button>
           <label className="language">
             <Globe2 size={16} />
+            <span>{vi ? "Ngôn ngữ thuyết minh" : "Narration language"}</span>
             <select
               aria-label={vi ? "Ngôn ngữ thuyết minh" : "Narration language"}
               value={locale}
@@ -211,6 +205,12 @@ function Visitor() {
               {vi ? "Thử lại" : "Try again"}
             </button>
           </div>
+        ) : navigation.poi && !selected ? (
+          <div className="empty">
+            <h2>{vi ? "Địa điểm không còn công khai" : "This place is unavailable"}</h2>
+            <p>{vi ? "Liên kết có thể đã cũ. Hãy xem các địa điểm hiện có." : "This link may be out of date. Browse available places."}</p>
+            <button className="button" onClick={back}>{vi ? "Tất cả địa điểm" : "All places"}</button>
+          </div>
         ) : selected ? (
           <article className="story">
             <button className="back" onClick={back}>
@@ -225,7 +225,7 @@ function Visitor() {
                       ? mediaUrl(selected.image_id)
                       : (selected.source?.image_url ?? "")
                   }
-                  alt={narration?.title}
+                  alt={narration?.title || selected.name}
                 />
               ) : (
                 <div className="illustration">
@@ -322,10 +322,17 @@ function Visitor() {
                     ? "Chậm lại một chút. Lắng nghe và khám phá vẻ đẹp Quận 1 theo cách của riêng bạn."
                     : "Slow down. Listen to the stories and discover District 1 at your own pace."}
                 </p>
+                <div className="hero-actions">
+                  <button className="button" onClick={() => {
+                    setView("map");
+                    document.getElementById("places")?.scrollIntoView();
+                  }}>{vi ? "Khám phá bản đồ" : "Explore the map"}</button>
+                  <a className="button secondary" href="#places" onClick={() => setView("list")}>{vi ? "Xem địa điểm" : "View places"}</a>
+                </div>
               </div>
               {mobileAppUrl && <MobileAppCard url={mobileAppUrl} vi={vi} />}
             </div>
-            <div className="list-heading">
+            <div className="list-heading" id="places">
               <h2>{vi ? "Địa điểm để lắng nghe" : "Places with a story"}</h2>
               <label className="search">
                 <Search size={17} />
@@ -335,6 +342,7 @@ function Visitor() {
                   aria-label={vi ? "Tìm địa điểm" : "Search places"}
                   placeholder={vi ? "Bạn muốn khám phá đâu?" : "Where to next?"}
                 />
+                {query && <button type="button" aria-label={vi ? "Xóa tìm kiếm" : "Clear search"} onClick={() => setQuery("")}><X size={17} /></button>}
               </label>
             </div>
             <div
@@ -356,16 +364,16 @@ function Visitor() {
                 {vi ? "Bản đồ" : "Map"}
               </button>
             </div>
-            {list.length === 0 ? (
+            {list.length === 0 && view === "list" ? (
               <div className="empty">
                 <Headphones size={37} />
                 <h2>
-                  {vi
+                  {search && pois.length ? (vi ? "Không có kết quả tìm kiếm" : "No matching places") : vi
                     ? "Những câu chuyện đang được chuẩn bị"
                     : "Stories are on their way"}
                 </h2>
                 <p>
-                  {query
+                  {search && pois.length
                     ? vi
                       ? "Thử một từ khóa khác."
                       : "Try a different keyword."
@@ -373,15 +381,19 @@ function Visitor() {
                       ? "Các địa điểm sẽ xuất hiện sau khi được kiểm tra và xuất bản. Hẹn gặp bạn sớm!"
                       : "Places will appear here once reviewed and published. See you soon!"}
                 </p>
+                {search && pois.length > 0 && <button className="button" onClick={() => setQuery("")}>{vi ? "Xóa tìm kiếm" : "Clear search"}</button>}
               </div>
             ) : view === "map" ? (
               <MapExplorer
                 places={list}
+                gpsPlaces={pois}
                 languages={languages}
                 locale={locale}
                 uiLocale={uiLocale}
                 categories={categories}
                 onDetail={openDetail}
+                viewport={navigation.mapViewport.current}
+                onViewportChange={navigation.rememberMap}
               />
             ) : (
               <div className="place-list">
@@ -411,6 +423,7 @@ function Visitor() {
                         {p.translations[locale]?.title || p.name}
                       </h3>
                       <p>{p.address}</p>
+                      {(p.latitude === null || p.longitude === null) && <p>{vi ? "Chưa có tọa độ trên bản đồ" : "Map location is not available yet"}</p>}
                       <p>
                         {getCategoryLabel(
                           categories.find(

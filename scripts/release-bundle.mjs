@@ -4,6 +4,7 @@ import { resolve, relative, sep } from "node:path";
 import { createHash } from "node:crypto";
 
 const root = resolve(".runtime/release");
+const metadata = JSON.parse(readFileSync("services/backend/app/release-metadata.json", "utf8"));
 const hash = (file) => createHash("sha256").update(readFileSync(file)).digest("hex");
 function files(dir) {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -22,18 +23,24 @@ if (mode === "pack") {
   const checksums = Object.fromEntries(files(root).filter((f) => !f.endsWith("manifest.json"))
     .map((file) => [relative(root, file).split(sep).join("/"), hash(file)]));
   writeFileSync(resolve(root, "manifest.json"), JSON.stringify({
-    release, schema_revision: "0010", worker_protocol: 3, files: checksums,
+    release, ...metadata, files: checksums,
   }, null, 2) + "\n");
 } else {
   const manifest = JSON.parse(readFileSync(resolve(root, "manifest.json"), "utf8"));
   if (manifest.release !== process.env.RELEASE_SHA) throw new Error("Artifact commit mismatch");
+  if (manifest.schema_revision !== metadata.schema_revision || manifest.worker_protocol !== metadata.worker_protocol) {
+    throw new Error("Artifact compatibility metadata mismatch");
+  }
   const actual = files(root).filter((f) => f !== resolve(root, "manifest.json"));
   if (actual.length !== Object.keys(manifest.files).length) throw new Error("Unexpected artifact files");
   for (const [name, digest] of Object.entries(manifest.files)) {
     const path = resolve(root, name);
     if (!path.startsWith(root + sep) || hash(path) !== digest) throw new Error("Artifact checksum mismatch");
   }
-  if (JSON.parse(readFileSync(resolve(root, "site/release.json"))).release !== manifest.release) throw new Error("Site identity mismatch");
+  const site = JSON.parse(readFileSync(resolve(root, "site/release.json")));
+  if (site.release !== manifest.release || site.schema_revision !== manifest.schema_revision || site.worker_protocol !== manifest.worker_protocol) {
+    throw new Error("Site identity or compatibility metadata mismatch");
+  }
   if (mode === "config") {
     if (process.env.CLOUDFLARE_CONFIG_REVIEWED !== "true") throw new Error("Review existing Worker routes/settings first");
     const origin = new URL(process.env.BACKEND_ORIGIN);

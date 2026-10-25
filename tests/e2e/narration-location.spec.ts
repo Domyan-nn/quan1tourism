@@ -687,3 +687,27 @@ test("hidden tab and stale samples cannot qualify dwell; visible tab needs fresh
     .poll(() => page.evaluate(() => (window as any).__speech.calls.length))
     .toBe(1);
 });
+
+test("search with no matching pins keeps GPS scope and explains dwell and missing content", async ({ page }) => {
+  await mockSpeech(page);
+  await fixture(page);
+  await page.clock.install();
+  await page.goto(origin);
+  await page.getByRole("textbox", { name: "Tìm địa điểm", exact: true }).fill("không tìm thấy");
+  await page.getByRole("button", { name: "Bản đồ", exact: true }).click();
+  await expect(page.locator(".place-pin")).toHaveCount(0);
+  await page.getByRole("button", { name: "Bật thuyết minh theo vị trí", exact: true }).click();
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.evaluate(() => (window as any).__gps.emit(Number.NaN));
+  await expect(page.locator(".gps-controls").getByRole("status")).toContainText("Chưa xác định");
+  expect(errors).toEqual([]);
+  await page.evaluate(() => (window as any).__gps.emit(5, 106.72));
+  await expect(page.locator(".gps-controls").getByRole("status")).toContainText("Chưa có địa điểm đủ gần");
+  await page.evaluate(() => (window as any).__gps.emit());
+  await expect(page.locator(".gps-controls").getByRole("status")).toContainText("Đang xác nhận");
+  await page.clock.runFor(5000);
+  await page.evaluate(() => (window as any).__gps.emit());
+  await expect.poll(() => page.evaluate(() => (window as any).__speech.calls.length)).toBe(1);
+  await expect(page.locator(".map-card")).toContainText(poi.name);
+});

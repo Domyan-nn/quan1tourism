@@ -48,17 +48,32 @@ export class Narrator {
         const chunk = nextChunk(text, offset);
         if (!chunk) { finish("idle"); return; }
         offset += chunk.length;
-        this.port.speak(chunk, {
-          voice: voice.identifier, language, rate: 0.95,
-          onStart: () => {
-            if (!current()) return;
-            this.changed("speaking");
-            if (!counted) { counted = true; started(); }
-          },
-          onDone: next,
-          onStopped: () => finish("idle"),
-          onError: () => finish("error"),
-        });
+        // Native engines can deliver duplicate or late terminal callbacks. A
+        // completed chunk must never queue another copy or stop the next one.
+        let completed = false;
+        const active = () => current() && !completed;
+        const end = (state: PlaybackState) => {
+          if (!active()) return;
+          completed = true;
+          finish(state);
+        };
+        try {
+          this.port.speak(chunk, {
+            voice: voice.identifier, language, rate: 0.95,
+            onStart: () => {
+              if (!active()) return;
+              this.changed("speaking");
+              if (!counted) { counted = true; started(); }
+            },
+            onDone: () => {
+              if (!active()) return;
+              completed = true;
+              next();
+            },
+            onStopped: () => end("idle"),
+            onError: () => end("error"),
+          });
+        } catch { end("error"); }
       };
       next();
     } catch { finish("error"); }

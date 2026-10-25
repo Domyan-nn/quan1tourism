@@ -1,5 +1,7 @@
 # Saigon Stories · Quận 1 Tourism
 
+Bàn giao hoàn thiện ngày 25/10/2026: [kết quả, bảng audit, kiểm thử, ảnh trước/sau, hướng dẫn Windows và các bước staging còn thiếu](docs/HANDOVER-2026-10-25.md).
+
 Ứng dụng Expo Go và QR trên hero: [chạy LAN/tunnel trên Windows, backend/phiên và giới hạn thiết bị](docs/MOBILE-EXPO.md).
 Mobile hiện dùng **Expo SDK 58**: [phiên bản, thay đổi tunnel và kết quả nâng cấp](docs/MOBILE-SDK58.md).
 Chỉnh bảng thuyết minh admin và dấu duyệt theo nội dung: [quy tắc và bàn giao](docs/ADMIN-NARRATION-REVIEW.md).

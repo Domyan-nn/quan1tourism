@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { MapPin, X } from "lucide-react";
 import {
   mediaUrl,
@@ -11,21 +11,28 @@ import { getCategoryLabel } from "@quan1/contracts";
 import type { PublicCategory, Language, Poi } from "@quan1/contracts";
 import { useLocation } from "./useLocation";
 import { distanceM } from "./geofencing";
+import type { MapViewport } from "./navigation";
 
 export function MapExplorer({
   places,
+  gpsPlaces,
   languages,
   locale,
   onDetail,
   uiLocale,
   categories,
+  viewport,
+  onViewportChange,
 }: {
   places: Poi[];
+  gpsPlaces: Poi[];
   languages: Language[];
   locale: string;
   onDetail: (poi: Poi) => void;
   uiLocale: string;
   categories: PublicCategory[];
+  viewport?: MapViewport;
+  onViewportChange: (view: MapViewport) => void;
 }) {
   const [selected, setSelected] = useState<Poi | null>(null);
   const [narrationLocale, setNarrationLocale] = useState(locale);
@@ -34,7 +41,12 @@ export function MapExplorer({
   const [autoPoi, setAutoPoi] = useState("");
   const [blocked, setBlocked] = useState(false);
   const [recenter, setRecenter] = useState(0);
-  const gps = useLocation(places, narrationLocale, (poi) => {
+  useEffect(() => {
+    setAutoPoi("");
+    setAutoRequest(0);
+    setNarrationLocale(locale);
+  }, [locale]);
+  const gps = useLocation(gpsPlaces, narrationLocale, (poi) => {
     setSelected(poi);
     setAutoPoi(poi.id);
     setBlocked(false);
@@ -84,10 +96,14 @@ export function MapExplorer({
         )}
         <small>
           {vi
-            ? "Chỉ hoạt động khi trang đang mở. Vị trí được xử lý trên thiết bị."
-            : "Works while this page is open. Location stays on your device."}
+            ? "Tự thuyết minh xét mọi địa điểm công khai có bài theo ngôn ngữ đã chọn, kể cả ngoài kết quả tìm kiếm. Chỉ hoạt động khi trang đang mở. Vị trí được xử lý trên thiết bị."
+            : "Automatic narration checks all published places with content in your selected language, including those outside search results. Works while this page is open. Location stays on your device."}
         </small>
+        {gps.fix && <small>{vi ? "Vị trí" : "Location"}: {gps.fix.latitude.toFixed(5)}, {gps.fix.longitude.toFixed(5)} · ±{Math.round(gps.fix.accuracy)} m</small>}
       </div>
+      {!places.length && <p role="status" className="map-hint">{gpsPlaces.length
+        ? vi ? "Không có địa điểm khớp tìm kiếm. Xóa từ khóa để xem lại các ghim; tự thuyết minh vẫn xét mọi địa điểm." : "No matching places. Clear your search to see pins; automatic narration still checks all places."
+        : vi ? "Chưa có địa điểm công khai. Các ghim sẽ xuất hiện sau khi nội dung được duyệt và công bố." : "There are no published places yet. Pins appear after content is reviewed and published."}</p>}
       <div className="map-explorer">
         <PlaceMap
           places={places}
@@ -95,6 +111,8 @@ export function MapExplorer({
           vi={vi}
           userPosition={gps.fix}
           recenter={recenter}
+          viewport={viewport}
+          onViewportChange={onViewportChange}
         />
         {places.some(
           (poi) => poi.latitude === null || poi.longitude === null,
@@ -170,6 +188,7 @@ export function MapExplorer({
             <p className="map-description">
               {selected.short_description || narration?.text.slice(0, 180)}
             </p>
+            {narration?.text && <details><summary>{vi ? "Đọc bài thuyết minh" : "Read narration"}</summary><p className="narration" lang={narrationLocale} dir={language?.direction}>{narration.text}</p></details>}
             {language ? (
               <>
                 <label className="map-language">
@@ -238,6 +257,11 @@ const gpsMessages: Record<string, Record<string, string>> = {
     idle: "Chưa bật định vị.",
     locating: "Đang lấy vị trí…",
     ready: "GPS sẵn sàng.",
+    nearby: "Chưa có địa điểm đủ gần để tự thuyết minh.",
+    dwelling: "Đang xác nhận bạn ở trong vùng thuyết minh…",
+    missing: "Địa điểm gần bạn chưa có thuyết minh bằng ngôn ngữ đã chọn.",
+    busy: "Bài đang nghe được giữ. Tự thuyết minh sẽ chờ bài kết thúc.",
+    cooldown: "Địa điểm trong vùng đã được phát; hãy tiếp tục khám phá.",
     unsupported: "Trình duyệt không hỗ trợ định vị.",
     insecure: "Định vị cần HTTPS hoặc localhost.",
     denied:
@@ -251,6 +275,11 @@ const gpsMessages: Record<string, Record<string, string>> = {
     idle: "Location is off.",
     locating: "Finding your location…",
     ready: "GPS ready.",
+    nearby: "No place is close enough for automatic narration.",
+    dwelling: "Confirming your presence in the narration area…",
+    missing: "Nearby places have no narration in your selected language.",
+    busy: "Your current narration is kept. Automatic narration will wait.",
+    cooldown: "This nearby place has already played. Continue exploring.",
     unsupported: "Geolocation is unavailable in this browser.",
     insecure: "Location requires HTTPS or localhost.",
     denied:

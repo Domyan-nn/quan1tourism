@@ -17,7 +17,9 @@ from sqlalchemy.orm import Session as DbSession
 from sqlalchemy.orm.exc import StaleDataError
 
 from .auth import COOKIE, COOKIE_SECURE, current_user, digest, optional_user, passwords, require
-from .content import audit, check_revision, get_poi, iso, ready, serialize, text_snapshot, touch, transition
+from .content import (
+    audit, check_revision, get_poi, iso, publication_snapshot, ready, serialize, text_snapshot, touch, transition,
+)
 from .engagement import ENGAGEMENT_COOKIE, record
 from .geocoding import search_places
 from .languages import get_language, language_data, languages
@@ -31,6 +33,7 @@ from .duplicates import ensure_unique, find_duplicates, reserve_identities
 from .narration_jobs import router as narration_router
 from .native_auth import router as native_auth_router
 from .media_storage import local_path, parse_reference, read_remote_image, remove_new_image, store_image
+from .release import SCHEMA_REVISION, WORKER_PROTOCOL
 
 app = FastAPI(title="Saigon Stories API", version="0.1.0")
 app.include_router(ai_router)
@@ -103,14 +106,14 @@ def live():
 @app.get("/api/v1/version")
 def version():
     return {"release": os.getenv("RELEASE_SHA") or os.getenv("RENDER_GIT_COMMIT", "local"),
-            "worker_protocol": 3, "schema_revision": "0010"}
+            "worker_protocol": WORKER_PROTOCOL, "schema_revision": SCHEMA_REVISION}
 
 
 @app.get("/api/v1/health/ready")
 def readiness(db: DbSession = Depends(get_db)):
     try:
         db.execute(text("SELECT 1 FROM users LIMIT 1"))
-        if db.execute(text("SELECT version_num FROM alembic_version")).scalar() != "0010":
+        if db.execute(text("SELECT version_num FROM alembic_version")).scalar() != SCHEMA_REVISION:
             raise HTTPException(503, "Database migration is not ready.")
     except SQLAlchemyError:
         raise HTTPException(503, "Database is not ready.") from None
@@ -408,8 +411,7 @@ def save_visibility(db, poi, status, user):
     for release in db.scalars(select(Release).where(Release.poi_id == poi.id, Release.is_current.is_(True))):
         release.is_current = False
     if status == "published":
-        snapshot = serialize(poi, db)
-        snapshot["has_published"] = True
+        snapshot = publication_snapshot(poi, db)
         db.add(Release(poi_id=poi.id, revision=poi.revision, snapshot=snapshot))
         if poi.image_id and (media := db.get(Media, poi.image_id)):
             media.is_public = True
@@ -534,11 +536,19 @@ async def upload(
     file: UploadFile,
     kind: str = Query(pattern="^image$"),
     revision: int = Query(ge=1),
+    upload_id: str | None = Query(default=None, pattern="^[a-f0-9]{32}$"),
     db: DbSession = Depends(get_db),
     user: User = Depends(require("admin")),
 ):
     poi = get_poi(db, poi_id)
-    check_revision(poi, revision)
+    existing = db.get(Media, upload_id) if upload_id else None
+    if existing:
+        # Only acknowledge the exact immediately preceding upload. A later
+        # edit must still report a revision conflict rather than accepting it.
+        if existing.poi_id != poi.id or poi.image_id != existing.id or poi.revision != revision + 1:
+            raise HTTPException(409, "Lần tải ảnh hoặc phiên bản đã thay đổi. Mở lại địa điểm để kiểm tra.")
+    else:
+        check_revision(poi, revision)
     if poi.status in ("in_review", "archived"):
         raise HTTPException(409, "Nội dung cần ở trạng thái bản nháp để tải tệp.")
     limit = 10 * 1024 * 1024
@@ -562,7 +572,11 @@ async def upload(
         raise HTTPException(422, "Ảnh không hợp lệ. Chọn JPG, PNG hoặc WebP, tối đa 20 triệu điểm ảnh.")
     if file.content_type != mime:
         raise HTTPException(422, "Định dạng bên trong tệp không khớp loại tệp đã gửi.")
-    media_id = uid()
+    if existing:
+        if existing.kind != kind or existing.mime != mime or existing.checksum != digest_bytes(raw):
+            raise HTTPException(409, "Mã tải ảnh đã được dùng cho tệp khác. Mở lại địa điểm để kiểm tra.")
+        return serialize(poi, db, statistics=True)
+    media_id = upload_id or uid()
     filename = f"{media_id}.{ext}"
     filename = store_image(MEDIA_ROOT, filename, raw, mime)
     media = Media(
@@ -627,9 +641,10 @@ def media_file(media_id: str, request: Request, db: DbSession = Depends(get_db))
 @app.get("/api/v1/pois")
 def public_pois(locale: str = Query("vi", max_length=35), db: DbSession = Depends(get_db)):
     get_language(db, locale, enabled_only=True)
+    enabled_codes = {language.code for language in languages(db, enabled_only=True)}
     return {
         "items": [
-            text_snapshot(r.snapshot)
+            text_snapshot(r.snapshot, enabled_codes)
             for r in db.scalars(
                 select(Release).join(Poi, Poi.id == Release.poi_id)
                 .where(Release.is_current.is_(True), Poi.status != "archived")
@@ -648,7 +663,7 @@ def public_poi(poi_id: str, request: Request, locale: str = Query("vi", max_leng
         Release.poi_id == poi_id, Release.is_current.is_(True), Poi.status != "archived"))
     if not release:
         raise HTTPException(404, "Địa điểm này chưa được xuất bản hoặc đã được lưu trữ.")
-    snapshot = text_snapshot(release.snapshot)
+    snapshot = text_snapshot(release.snapshot, {language.code for language in languages(db, enabled_only=True)})
     if track_view:
         record(db, request, poi_id, "view")
     return snapshot

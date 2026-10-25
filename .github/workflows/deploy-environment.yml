@@ -132,6 +132,7 @@ jobs:
         with:
           name: ${{ inputs.environment }}-reconcile-${{ github.run_id }}
           path: |
+            .runtime/preflight.json
             .runtime/render-before.json
             .runtime/render-deploy.json
             .runtime/migration.json

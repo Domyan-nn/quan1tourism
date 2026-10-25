@@ -52,11 +52,30 @@ export class Geofence {
   private pending: { id: string; since: number; sample: number } | null = null;
   private inside = new Set<string>();
   private played = new Map<string, number>();
+  get awaitingDwell() {
+    return this.pending !== null;
+  }
   reset() {
     this.pending = null;
   }
   started(id: string, now: number) {
     this.played.set(id, now);
+  }
+  // Read after offer(): explain the same device-only fence without changing it.
+  diagnose(fix: Fix, targets: Target[], locale: string, now: number, busy: boolean) {
+    const problem = fixProblem(fix, now);
+    if (problem !== "ready") return problem;
+    const nearby = targets.filter(target => target.auto_narration_enabled &&
+      target.latitude !== null && target.longitude !== null &&
+      distanceM(fix, {latitude: target.latitude, longitude: target.longitude}) <= (target.trigger_radius_m ?? 100));
+    if (!nearby.length) return "no-nearby";
+    const available = nearby.filter(target => target.translations[locale]?.tts_ready &&
+      target.translations[locale]?.text.trim());
+    if (!available.length) return "missing-content";
+    if (!available.some(target => fix.accuracy <= Math.min(GPS.maxAccuracyM, (target.trigger_radius_m ?? 100) / 2)))
+      return "accuracy";
+    if (busy) return "busy";
+    return this.awaitingDwell ? "dwelling" : "cooldown";
   }
   offer(
     fix: Fix,

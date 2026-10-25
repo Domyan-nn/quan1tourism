@@ -13,6 +13,7 @@ COPY apps ./apps
 COPY packages ./packages
 COPY tsconfig.json ./
 COPY scripts/build-site.mjs scripts/build-site.mjs
+COPY services/backend/app/release-metadata.json services/backend/app/release-metadata.json
 ARG RELEASE_SHA
 ARG RENDER_GIT_COMMIT
 RUN npm run build:site

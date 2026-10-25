@@ -39,6 +39,8 @@ export function PlaceMap({
   vi = true,
   userPosition,
   recenter = 0,
+  viewport,
+  onViewportChange,
 }: {
   places?: Poi[];
   onSelect?: (poi: Poi) => void;
@@ -52,6 +54,8 @@ export function PlaceMap({
     accuracy: number;
   } | null;
   recenter?: number;
+  viewport?: { latitude: number; longitude: number; zoom: number };
+  onViewportChange?: (view: { latitude: number; longitude: number; zoom: number }) => void;
 }) {
   const node = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
@@ -59,15 +63,21 @@ export function PlaceMap({
   const userLayers = useRef<L.LayerGroup | null>(null);
   const centered = useRef(0);
   const fitted = useRef(false);
-  const latest = useRef({ onSelect, onChange, disabled });
-  latest.current = { onSelect, onChange, disabled };
+  const latest = useRef({ onSelect, onChange, disabled, onViewportChange });
+  latest.current = { onSelect, onChange, disabled, onViewportChange };
   const [tileError, setTileError] = useState(false);
   useEffect(() => {
     if (!node.current) return;
+    const restored = viewport && valid(viewport) && Number.isFinite(viewport.zoom);
+    fitted.current = !!restored;
     const instance = L.map(node.current, { scrollWheelZoom: false }).setView(
-      center,
-      14,
+      restored ? [viewport.latitude, viewport.longitude] : center,
+      restored ? viewport.zoom : 14,
     );
+    instance.on("moveend", () => {
+      const point = instance.getCenter();
+      latest.current.onViewportChange?.({ latitude: point.lat, longitude: point.lng, zoom: instance.getZoom() });
+    });
     map.current = instance;
     L.tileLayer(__MAP_TILE_URL__, {
       maxZoom: 19,
@@ -158,7 +168,8 @@ export function PlaceMap({
       !map.current ||
       !userLayers.current ||
       !userPosition ||
-      !valid(userPosition)
+      !valid(userPosition) ||
+      !Number.isFinite(userPosition.accuracy) || userPosition.accuracy < 0
     )
       return;
     const point: L.LatLngTuple = [
@@ -265,7 +276,7 @@ export function LocationEditor({
               <input
                 type="checkbox"
                 checked={value.auto_narration_enabled ?? false}
-                disabled={disabled}
+                disabled={disabled || (!valid(value) && !value.auto_narration_enabled)}
                 onChange={(event) =>
                   onChange({
                     ...value,
@@ -278,6 +289,7 @@ export function LocationEditor({
                 : "Enable location narration"}
             </span>
           </label>
+          {!valid(value) && <p className="field-hint">{vi ? "Thêm tọa độ hợp lệ trước khi bật thuyết minh theo vị trí." : "Add valid coordinates before enabling location narration."}</p>}
           <label className="field-label">
             {vi ? "Bán kính kích hoạt (m)" : "Trigger radius (m)"}
             <input

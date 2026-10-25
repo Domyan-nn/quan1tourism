@@ -28,7 +28,7 @@ def test_client_authentication_timeout_redirect_policy_and_payload(monkeypatch):
 
     monkeypatch.setattr(worker, "build_opener", opener)
     assert worker.call_server("https://backend.test", "synthetic-test-token", "/claim", {}) == {"job": None}
-    for url in ("http://public.test", "https://user:pass@backend.test", "https://backend.test/path"):
+    for url in ("http://public.test", "https://user:pass@backend.test", "https://backend.test/path", "https://"):
         with pytest.raises(ValueError):
             worker.server_url(url)
 
@@ -87,3 +87,42 @@ def test_worker_connection_error_is_distinct_from_inference_timeout(monkeypatch)
         'article': {'url': 'https://vi.wikipedia.org/wiki/Test'}, 'categories': [], 'languages': []}})
     assert result['error'] == 'worker_unavailable'
     assert 'sensitive' not in json.dumps(result)
+
+
+@pytest.mark.parametrize("status, attempts", [(400, 1), (404, 1), (409, 1), (422, 1), (429, 3), (503, 3)])
+def test_completion_retries_transient_failures_and_reports_unconfirmed_results(monkeypatch, capsys, status, attempts):
+    class Thread:
+        def __init__(self, **kwargs):
+            pass
+        def start(self):
+            pass
+        def join(self, **kwargs):
+            pass
+
+    class Event:
+        def set(self):
+            pass
+        def wait(self, seconds):
+            pass
+
+    completions = []
+    monkeypatch.setattr(worker.threading, "Thread", Thread)
+    monkeypatch.setattr(worker.threading, "Event", Event)
+    monkeypatch.setattr(worker, "ollama_status", lambda: {"ready": True})
+    monkeypatch.setattr(worker, "process_job", lambda job: {"lease": job["lease"], "draft": {"name": "Test"}})
+
+    def call(origin, token, path, payload):
+        if path == "/claim":
+            return {"job": {"id": "job", "lease": "lease"}}
+        completions.append(payload)
+        raise HTTPError("https://backend.test/private?credential=must-not-print", status, "private-server-message", {}, None)
+
+    monkeypatch.setattr(worker, "call_server", call)
+    worker.run("https://backend.test", "must-not-print", once=True)
+    assert len(completions) == attempts
+    output = capsys.readouterr().out
+    assert ("Completion was not confirmed" in output) is (attempts == 3)
+    assert ("Result was rejected" in output) is (attempts == 1)
+    assert "must-not-print" not in output
+    assert "private-server-message" not in output
+    assert "needs administrator review" not in output

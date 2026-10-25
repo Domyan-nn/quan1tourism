@@ -1,7 +1,8 @@
 # CI/CD quan1tourism
 
 Phạm vi: web/admin React + TypeScript, packages dùng chung, FastAPI/SQLAlchemy/Alembic,
-PostgreSQL, Worker/Pages proxy, Ollama pull worker trên PC. Không có Expo/native pipeline.
+PostgreSQL, Worker/Pages proxy, Ollama pull worker trên PC. CI kiểm tra typecheck/logic Expo;
+không có pipeline EAS hoặc phát hành native lên store.
 Đợt hoàn thiện này chỉ sửa repository và chạy QA cô lập; không deploy hoặc đổi cloud.
 Audit ban đầu: [CICD-AUDIT.md](CICD-AUDIT.md). Bằng chứng chạy: [CICD-VERIFICATION.md](CICD-VERIFICATION.md).
 
@@ -79,6 +80,9 @@ không được hiểu là chạy cùng Docker image digest của CI. Muốn b�
 ## Artifact và nguồn release
 
 `candidate-<sha>` chứa Worker bundle, static assets và manifest SHA256 từng file, schema revision và worker protocol.
+`services/backend/app/release-metadata.json` là nguồn duy nhất của expected Alembic revision và protocol
+cho API/readiness, `/release.json` và manifest. Backend test đối chiếu file với Alembic head duy nhất;
+bundle verification từ chối metadata không khớp kể cả khi checksum từng file hợp lệ.
 Sau tất cả gate, CI phát hành `release-<sha>`. Staging tải artifact đúng CI run; không build lại frontend lúc deploy.
 Production chỉ nhận `staging_run_id` thành công và so cùng manifest digest **trước cloud write**.
 Backend Render nhận `commitId` đầy đủ; script poll deploy ID tới `live`, kiểm tra commit rồi smoke version.
@@ -108,6 +112,8 @@ CI có thể cancel lượt CI cũ; concurrency CI và deployment tách nhau.
 
 Preflight so fingerprint DB (host/port/database/**username**, không có mật khẩu), service ID, Worker name,
 backend/public origin với inventory production. Staging trùng một tài nguyên production là lỗi.
+Origin được chuẩn hóa host không phân biệt hoa/thường, dấu chấm cuối và port HTTPS mặc định;
+DSN có query ghi đè target (`host`, `hostaddr`, `port`, `dbname`, `user`, `service`) bị từ chối.
 Production phải khớp inventory. Fingerprint không chứng minh media tách riêng: owner kiểm tra disk/storage path
 và bảo đảm không sao chép dữ liệu thật sang test. Không kết nối PC worker staging vào hàng đợi production.
 
@@ -115,6 +121,8 @@ và bảo đảm không sao chép dữ liệu thật sang test. Không kết n�
 
 Workflow kiểm tra đủ tên biến/secret ngay sau checkout, trước khi cài dependencies hoặc tải artifact.
 Khi thiếu cấu hình, log và GitHub job summary liệt kê đúng các **tên** còn thiếu, không in giá trị.
+`.runtime/preflight.json` ghi trạng thái, mã lỗi an toàn và tên setting; workflow giữ file trong
+artifact reconcile khi lỗi, kể cả khi chưa có file deploy hoặc chưa cài dependencies.
 Kiểm tra hiện diện không thay thế kiểm tra isolation, backup/schema review và staging receipt phía sau.
 Biến trong Render Environment không tự được cấp cho GitHub Actions; cần cấu hình tại
 repository **Settings → Environments → staging → Variables / Secrets**.
@@ -158,7 +166,8 @@ trong shell đã nạp DATABASE_URL qua secret manager; chỉ in hash. Không tr
 
 Gitleaks 8.24.3 quét Git history, redact kết quả; npm audit chặn mức high/critical (gồm dev dependency),
 pip-audit 2.9.0 chặn mọi advisory production Python. Scanner lỗi/network lỗi cũng chặn release.
-Hiện không có allowlist. Ưu tiên nâng bản vá + lockfile + regression tests. Ngoại lệ cần PR có advisory ID,
+Ngoại lệ source backport node-forge được khóa chặt như mô tả ở trên; không có ignore cả package.
+Ưu tiên nâng bản vá + lockfile + regression tests. Ngoại lệ mới cần PR có advisory ID,
 lý do không áp dụng, owner và ngày hết hạn; không dùng ignore toàn bộ package hay continue-on-error.
 Nếu phát hiện secret thật: thu hồi/rotate trước, kiểm tra lịch sử và artifact bằng kênh hạn chế; không chép secret vào issue.
 Browser report/trace chỉ upload khi lỗi, chứa tài khoản/DB giả của test, giữ 7 ngày.

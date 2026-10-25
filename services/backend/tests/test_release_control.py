@@ -158,6 +158,10 @@ def test_empty_environment_reports_all_missing_names_before_dependency_install(t
     assert all(key in result.stderr for key in (*preflight.VARIABLES, *preflight.SECRETS))
     assert 'Settings > Environments > staging' in result.stderr
     assert 'Render Environment settings are separate' in result.stderr
+    report = json.loads((tmp_path / '.runtime/preflight.json').read_text())
+    assert report['status'] == 'failed' and report['code'] == 'settings_missing'
+    assert set(report['keys']) == set((*preflight.VARIABLES, *preflight.SECRETS))
+    assert not (tmp_path / '.runtime/render-deploy.json').exists()
 
 
 def test_configuration_presence_does_not_replace_resource_isolation_checks():
@@ -172,6 +176,7 @@ def test_configuration_presence_does_not_replace_resource_isolation_checks():
 
 
 def test_preflight_diagnostics_and_job_summary_never_display_values(monkeypatch, tmp_path, capsys):
+    monkeypatch.chdir(tmp_path)
     values = complete_settings()
     values['RENDER_API_KEY'] = 'render-secret-must-not-be-displayed'
     values['CLOUDFLARE_API_TOKEN'] = 'cloudflare-secret-must-not-be-displayed'
@@ -183,7 +188,8 @@ def test_preflight_diagnostics_and_job_summary_never_display_values(monkeypatch,
     monkeypatch.setenv('GITHUB_ACTIONS', 'true')
     monkeypatch.setattr(sys, 'argv', ['release_preflight.py', '--configuration-only'])
     assert preflight.run() == 1
-    output = capsys.readouterr().err + summary.read_text(encoding='utf-8')
+    output = (capsys.readouterr().err + summary.read_text(encoding='utf-8')
+              + Path('.runtime/preflight.json').read_text(encoding='utf-8'))
     assert 'RENDER_SERVICE_ID' in output and '::error title=Deployment configuration::' in output
     assert all(secret not in output for secret in ('never-print-this', values['RENDER_API_KEY'], values['CLOUDFLARE_API_TOKEN']))
 
@@ -194,3 +200,32 @@ def test_invalid_dsn_is_classified_without_echoing_secret(monkeypatch, capsys):
     assert preflight.run() == 1
     output = capsys.readouterr().err
     assert 'DATABASE_URL' in output and 'secret-password-value' not in output
+
+
+@pytest.mark.parametrize('origin', ['https://PROD.test', 'https://prod.test:443/', 'https://prod.test.'])
+def test_staging_rejects_equivalent_production_origins(origin):
+    values = complete_settings()
+    values['BACKEND_ORIGIN'] = origin
+    with pytest.raises(preflight.PreflightError) as caught:
+        preflight.validate(values)
+    assert caught.value.code == 'resource_isolation'
+    assert caught.value.keys == ('BACKEND_ORIGIN',)
+
+
+def test_production_accepts_equivalent_reviewed_origin_spelling():
+    values = complete_settings()
+    values['RELEASE_ENVIRONMENT'] = 'production'
+    values['PRODUCTION_DATABASE_IDENTITY'] = values['DATABASE_IDENTITY']
+    for key in ('BACKEND_ORIGIN', 'PUBLIC_ORIGIN', 'RENDER_SERVICE_ID', 'WORKER_NAME'):
+        values['PRODUCTION_' + key] = values['CLOUDFLARE_WORKER_NAME' if key == 'WORKER_NAME' else key]
+    values['BACKEND_ORIGIN'] = 'https://STAGE.test:443/'
+    preflight.validate(values)
+
+
+@pytest.mark.parametrize('override', ['host=production', 'hostaddr=127.0.0.1', 'port=6543',
+                                     'dbname=production', 'user=production', 'service=production'])
+def test_database_fingerprint_rejects_query_target_overrides(override):
+    with pytest.raises(preflight.PreflightError) as caught:
+        preflight.database_identity('postgresql://ci@stage/db?' + override)
+    assert caught.value.code == 'database_target_ambiguous'
+    assert caught.value.keys == ('DATABASE_URL',)

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { AppState } from "react-native";
 import * as Location from "expo-location";
 import type { Poi } from "@quan1/contracts";
-import { Geofence, GPS, fixProblem, type Fix } from "../../../packages/contracts/src/geofencing.ts";
+import { Geofence, GPS, type Fix } from "../../../packages/contracts/src/geofencing.ts";
 
 export function useGps(places: Poi[], locale: string, busy: () => boolean, onAuto: (poi: Poi) => void, stopAudio: () => void) {
   const [enabled, setEnabled] = useState(false);
@@ -52,9 +52,10 @@ export function useGps(places: Poi[], locale: string, busy: () => boolean, onAut
         accuracy: location.coords.accuracy ?? Infinity, timestamp: location.timestamp,
       };
       setFix(point);
-      setStatus(fixProblem(point, Date.now()));
       const current = latest.current;
-      const id = fence.current.offer(point, current.places, current.locale, Date.now(), current.busy());
+      const now = Date.now(), playing = current.busy();
+      const id = fence.current.offer(point, current.places, current.locale, now, playing);
+      setStatus(id ? "ready" : fence.current.diagnose(point, current.places, current.locale, now, playing));
       const poi = current.places.find(p => p.id === id);
       if (poi) current.onAuto(poi);
     };
@@ -63,7 +64,8 @@ export function useGps(places: Poi[], locale: string, busy: () => boolean, onAut
       if (token !== generation.current) return;
       if (!permission.granted) { setEnabled(false); setStatus("denied"); return; }
       const subscription = await Location.watchPositionAsync({
-        accuracy: Location.Accuracy.High, timeInterval: 1500, distanceInterval: 2,
+        // Dwell requires fresh samples even while the visitor stands still.
+        accuracy: Location.Accuracy.High, timeInterval: 1500, distanceInterval: 0,
       }, receive, () => { if (token === generation.current) setStatus("unavailable"); });
       if (token !== generation.current) subscription.remove();
       else watch.current = subscription;

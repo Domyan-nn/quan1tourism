@@ -26,7 +26,8 @@ Không cache API hoặc đưa secret vào VITE_*. Các domain/service thật gi�
 
 Release workflow là migration owner duy nhất: advisory lock PG, backup inventory và revision trước/sau.
 Docker CMD và native start command không migrate. Không dùng đồng thời startup migration, Render predeploy và release job.
-Không create_all lúc startup, không downgrade/restore tự động. Revision ứng dụng hiện tại 0010; readiness kiểm tra revision.
+Không create_all lúc startup, không downgrade/restore tự động. Expected revision/protocol lấy từ
+`services/backend/app/release-metadata.json`; readiness, version, frontend và manifest dùng cùng nguồn.
 Rollback ứng dụng chỉ khi binary trước tương thích schema đang có; dữ liệu không tự hạ theo binary.
 
 GPS, TTS, bản dịch AI và phục hồi tên danh mục: [NARRATION-GPS.md](NARRATION-GPS.md).
@@ -55,7 +56,9 @@ Hướng dẫn cụ thể và cách giữ dữ liệu phát sinh sau backup nằ
 
 Nếu migration/deploy/poll lỗi: giữ evidence reconcile, kiểm tra deploy ID/revision/lock trước khi retry.
 Không bấm Cancel giữa migration; không suy health thành công là commit mới. Khi cần rollback, dừng release mới và theo runbook.
-Ảnh upload cần disk bền vững riêng mỗi môi trường; snapshot media và lịch sử audio nếu có không bị xóa khi deploy.
+Ảnh mới dùng Supabase private Storage theo [SUPABASE-MEDIA.md](SUPABASE-MEDIA.md);
+file local cũ vẫn cần disk bền vững. Giữ disk hiện có cho đến khi inventory và byte/hash xác minh
+không còn media legacy cần giữ; không xóa disk để giảm phí trong nhiệm vụ này.
 Giới hạn/cache/rate-limit trong bộ nhớ process chưa thay thành dịch vụ trả phí hay distributed service.
 
 ## Ollama worker trên PC
