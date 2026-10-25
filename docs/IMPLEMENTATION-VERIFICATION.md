@@ -1,5 +1,8 @@
 # Kiểm tra thay đổi admin và Expo Go · 25/10/2026
 
+Báo cáo dưới đây ghi nhận lần triển khai SDK 57 ban đầu. Bản nâng SDK 58 sau đó có
+[báo cáo riêng](MOBILE-SDK58.md); hướng dẫn chạy hiện tại ở [MOBILE-EXPO.md](MOBILE-EXPO.md).
+
 Thực hiện trên Windows, từ HEAD `68c9e54`. Working tree ban đầu sạch, không tìm thấy AGENTS.md.
 Chỉ chỉnh mã nguồn/local artifacts; không triển khai production, không tạo dịch vụ/gói trả phí.
 

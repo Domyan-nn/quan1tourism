@@ -564,13 +564,13 @@ test("GPS errors do not interrupt manual narration; turning off preserves manual
     .getByRole("button", { name: "Bật thuyết minh theo vị trí", exact: true })
     .click();
   await page.evaluate(() => (window as any).__gps.fail(1));
-  await expect(page.getByRole("status")).toContainText("chưa cấp quyền");
+  await expect(page.locator(".gps-controls").getByRole("status")).toContainText("chưa cấp quyền");
   await page.locator('.place-pin[title="GPS narration test"]').click();
   await page
     .getByRole("button", { name: "Nghe thuyết minh", exact: true })
     .click();
   await page.evaluate(() => (window as any).__gps.fail(3));
-  await expect(page.getByRole("status")).toContainText("quá thời gian");
+  await expect(page.locator(".gps-controls").getByRole("status")).toContainText("quá thời gian");
   await page
     .getByRole("button", { name: "Tắt thuyết minh theo vị trí", exact: true })
     .click();

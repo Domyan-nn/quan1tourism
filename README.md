@@ -1,8 +1,9 @@
 # Saigon Stories · Quận 1 Tourism
 
 Ứng dụng Expo Go và QR trên hero: [chạy LAN/tunnel trên Windows, backend/phiên và giới hạn thiết bị](docs/MOBILE-EXPO.md).
+Mobile hiện dùng **Expo SDK 58**: [phiên bản, thay đổi tunnel và kết quả nâng cấp](docs/MOBILE-SDK58.md).
 Chỉnh bảng thuyết minh admin và dấu duyệt theo nội dung: [quy tắc và bàn giao](docs/ADMIN-NARRATION-REVIEW.md).
-Kết quả hai thay đổi: [báo cáo kiểm tra](docs/IMPLEMENTATION-VERIFICATION.md). Chưa triển khai production.
+Kết quả hai thay đổi ban đầu: [báo cáo kiểm tra](docs/IMPLEMENTATION-VERIFICATION.md). Trạng thái SDK và phiên QR hiện tại nằm trong báo cáo nâng cấp ở trên.
 
 Danh mục song ngữ Việt/Anh và migration `0010`: [mapping, kiểm thử và hướng dẫn chuyển đổi](docs/BILINGUAL-CATEGORIES.md).
 

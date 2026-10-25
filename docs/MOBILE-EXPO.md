@@ -1,29 +1,29 @@
 # Saigon Stories trên Expo Go
 
 Ứng dụng native ở `apps/mobile` dùng cùng API và release công khai với web. Không dùng WebView.
-Thay đổi này chưa triển khai production; các endpoint xác thực native mới cần có trên backend
-được chọn trước khi thử đăng ký/đăng nhập.
+Các endpoint xác thực native cần có trên backend được chọn trước khi thử đăng ký/đăng nhập.
+Trạng thái phiên Expo/QR và triển khai web mới nhất: [MOBILE-SDK58.md](MOBILE-SDK58.md).
 
 ## Phiên bản và nền tảng
 
-Đã đối chiếu SDK 57 với [bản phát hành chính thức](https://expo.dev/changelog/sdk-57),
-[ma trận module](https://github.com/expo/expo/blob/sdk-57/packages/expo/bundledNativeModules.json)
-và `expo install --check` trực tuyến. Lockfile giữ Expo 57.0.31, React Native 0.86.3,
-React/React DOM 19.2.3. Web và mobile dùng một bản React để tránh lỗi hook do workspace hoist.
+Đã đối chiếu SDK 58 với [bản phát hành chính thức](https://expo.dev/changelog/sdk-58),
+[ma trận module](https://github.com/expo/expo/blob/sdk-58/packages/expo/bundledNativeModules.json)
+và `expo install --check` trực tuyến. Lockfile giữ Expo 58.0.19, React Native 0.88.0,
+React/React DOM 19.3.0. Web và mobile dùng một bản React để tránh lỗi hook do workspace hoist.
 Không chọn SDK chỉ theo nhãn npm `latest`.
 
-Cài Expo Go **khớp SDK 57** theo [Expo Go](https://expo.dev/go).
+Cài Expo Go **khớp SDK 58** theo [Expo Go](https://expo.dev/go).
 Nếu bản trên cửa hàng chưa khớp, Android có thể dùng bản Expo cung cấp cho SDK này.
 Xem [hướng dẫn lệch phiên bản](https://docs.expo.dev/troubleshooting/expo-go-version-mismatch/).
 Khả năng cài trên iPhone thật phụ thuộc bản Expo Go được Apple cho phép phân phối; không giả định
 Android/iOS trên cửa hàng hỗ trợ cùng SDK. Cả Android thật và iPhone thật chưa được thử trong phiên này.
 
-[react-native-maps](https://docs.expo.dev/versions/v57.0.0/sdk/map-view/) có trong Expo Go:
+[react-native-maps](https://docs.expo.dev/versions/v58.0.0/sdk/map-view/) có trong Expo Go:
 Google Maps trên Android, Apple Maps mặc định trên iOS; thử qua Expo Go không cần thêm API key.
 Không bật billing hay tạo Google Cloud project. APK/App Store độc lập cần xem lại key, điều khoản,
 chi phí bản đồ và quy trình phát hành riêng. Không có pipeline EAS/store trong nhiệm vụ này.
 
-TTS dùng [expo-speech](https://docs.expo.dev/versions/v57.0.0/sdk/speech/) và giọng thiết bị.
+TTS dùng [expo-speech](https://docs.expo.dev/versions/v58.0.0/sdk/speech/) và giọng thiết bị.
 Điều khiển là **nghe từ đầu / dừng** vì Android không hỗ trợ pause/resume giống iOS.
 Bài dài chia đoạn bằng logic thuần dùng chung với web; đổi bài/ngôn ngữ hoặc vào background hủy hàng đợi.
 Thiếu giọng đúng ngôn ngữ/hệ chữ sẽ báo rõ và giữ văn bản. Không dùng API TTS trả phí.
@@ -66,7 +66,9 @@ Khác Wi-Fi hoặc 4G:
 npm.cmd run mobile:tunnel
 ```
 
-`@expo/ngrok` đã có trong devDependencies, không cần cài global. Tunnel cần Internet và dịch vụ ngoài,
+`mobile:tunnel` dùng rõ `--tunnel ngrok` với `@expo/ngrok` đã có trong devDependencies, không cần cài global.
+SDK 58 mặc định dùng tunnel mới yêu cầu tài khoản Expo; script này giữ cách dùng không cần đăng nhập như trước.
+Tunnel cần Internet và dịch vụ ngoài,
 có thể bị VPN/firewall/giới hạn dịch vụ ngắt. Không cần mua gói; nếu bị yêu cầu nâng gói, dùng LAN.
 Không mở cổng Ollama/PostgreSQL. Giữ máy chạy Expo và tiến trình tunnel hoạt động suốt buổi demo.
 Expo Go dùng để phát triển/thử; QR phiên dev không phải cam kết app luôn sẵn sàng.
@@ -74,7 +76,7 @@ Expo Go dùng để phát triển/thử; QR phiên dev không phải cam kết a
 ## Cập nhật hoặc tắt QR trên web
 
 Chép **nguyên liên kết mở Expo Go** CLI cung cấp (`exp://` hoặc `exps://`), không chép URL website/API.
-SDK 57 có endpoint chỉ đọc để lấy chính liên kết đó:
+SDK 58 có endpoint chỉ đọc để lấy chính liên kết đó:
 
 ```powershell
 # Dùng đúng cổng CLI đang chạy; 8081 chỉ là cổng ví dụ.
@@ -142,7 +144,7 @@ mobile trước `npm ci` để khớp lockfile. Export bundle xác nhận mã đ
 
 | Triệu chứng | Kiểm tra |
 | --- | --- |
-| Expo Go không tương thích | Cài đúng bản cho SDK 57 từ Expo; không nâng ngẫu nhiên dependency |
+| Expo Go không tương thích | Cài đúng bản cho SDK 58 từ Expo; không nâng ngẫu nhiên dependency |
 | Chưa tải được dự án | Metro/tunnel còn chạy, Wi-Fi/firewall/VPN; lấy lại URL CLI |
 | App mở nhưng không tải bài | Kiểm tra HTTPS origin/mạng/backend; tunnel Expo không sửa lỗi API |
 | Bài tải được, login 404 | Backend cũ chưa có `/native/auth/*`; dùng môi trường thử có mã mới |

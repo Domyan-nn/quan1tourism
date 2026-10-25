@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type ScrollViewInstance } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import MapView, { Marker } from "react-native-maps";
 import * as Speech from "expo-speech";
@@ -45,7 +45,7 @@ function Visitor() {
   const language = languages.find(l => l.code === locale);
   const selected = places.find(p => p.id === selectedId);
   const translation = selected?.translations[locale];
-  const scroll = useRef<ScrollView>(null);
+  const scroll = useRef<ScrollViewInstance>(null);
   const map = useRef<MapView>(null);
   const gps = useGps(loading || error ? [] : places, locale, () => narrator.busy, poi => {
     setSelectedId(poi.id); setDetail(false); setView("map");
