@@ -34,11 +34,13 @@ from .narration_jobs import router as narration_router
 from .native_auth import router as native_auth_router
 from .media_storage import local_path, parse_reference, read_remote_image, remove_new_image, store_image
 from .release import SCHEMA_REVISION, WORKER_PROTOCOL
+from .statistics import router as statistics_router
 
 app = FastAPI(title="Saigon Stories API", version="0.1.0")
 app.include_router(ai_router)
 app.include_router(narration_router)
 app.include_router(native_auth_router)
+app.include_router(statistics_router)
 editors = require("editor", "reviewer", "admin")
 login_attempts: dict[str, deque] = defaultdict(deque)
 registration_attempts: dict[str, deque] = defaultdict(deque)
@@ -58,7 +60,7 @@ async def request_context(request: Request, call_next):
     ):
         return JSONResponse({"detail": "Yêu cầu không hợp lệ.", "request_id": request_id}, status_code=403)
     response = await call_next(request)
-    if request.url.path.startswith("/api/v1/pois"):
+    if request.url.path.startswith("/api/v1/pois") or request.url.path == "/api/v1/events/visit":
         response.headers["Cache-Control"] = "no-store"
         if new_visit:
             response.set_cookie(ENGAGEMENT_COOKIE, request.state.visit_session, httponly=True,

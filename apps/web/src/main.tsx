@@ -19,6 +19,7 @@ import {
   SourceAttribution,
   SpeechPlayer,
   recordEngagement,
+  recordVisit,
 } from "@quan1/api-client";
 import { getCategoryLabel } from "@quan1/contracts";
 import type { PublicCategory, Language, Locale, Poi } from "@quan1/contracts";
@@ -106,6 +107,8 @@ function Visitor() {
       .then((data) => {
         if (!ignore) {
           setPois(data.items);
+          // The list response establishes the anonymous cookie before recording.
+          recordVisit();
         }
       })
       .catch((e) => {

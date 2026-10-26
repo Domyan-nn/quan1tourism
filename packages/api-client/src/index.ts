@@ -200,3 +200,7 @@ export function recordEngagement(id: string, kind: "view" | "listen") {
     method: "POST",
   }).catch(() => {});
 }
+
+export function recordVisit() {
+  void api("/events/visit", { method: "POST" }).catch(() => {});
+}

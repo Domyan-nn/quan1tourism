@@ -1,5 +1,7 @@
 # Saigon Stories · Quận 1 Tourism
 
+Thống kê lượt truy cập website từ DB tới admin, quy tắc đếm theo phiên và migration `0011`: [hướng dẫn](docs/SITE-STATISTICS.md).
+
 Bàn giao hoàn thiện ngày 25/10/2026: [kết quả, bảng audit, kiểm thử, ảnh trước/sau, hướng dẫn Windows và các bước staging còn thiếu](docs/HANDOVER-2026-10-25.md).
 
 Ứng dụng Expo Go và QR trên hero: [chạy LAN/tunnel trên Windows, backend/phiên và giới hạn thiết bị](docs/MOBILE-EXPO.md).

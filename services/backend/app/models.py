@@ -1,10 +1,11 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from sqlalchemy import (
     Boolean,
     BigInteger,
     CheckConstraint,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -137,6 +138,19 @@ class PoiEngagement(Base):
     kind: Mapped[str] = mapped_column(String(6), primary_key=True)
     recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     __table_args__ = (CheckConstraint("kind IN ('view','listen')", name="valid_engagement_kind"),)
+
+
+class SiteVisitSession(Base):
+    __tablename__ = "site_visit_sessions"
+    session_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class SiteVisitDaily(Base):
+    __tablename__ = "site_visit_daily"
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+    visit_count: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
+    __table_args__ = (CheckConstraint("visit_count >= 0", name="nonnegative_site_visits"),)
 
 
 class PoiTranslation(Base):

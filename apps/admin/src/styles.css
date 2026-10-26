@@ -625,6 +625,59 @@ h1 {
   box-shadow: 0 2px 3px #31452b02;
   overflow: hidden;
 }
+.site-statistics {
+  padding: 20px;
+  margin-bottom: 27px;
+}
+.site-statistics .panel-heading {
+  padding: 0;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+.site-statistics .panel-heading p {
+  max-width: 620px;
+  margin-top: 8px;
+  line-height: 1.7;
+  font-size: 0.8rem;
+}
+.site-statistics h3 {
+  font-size: 0.9rem;
+  margin-bottom: 12px;
+}
+.visit-history {
+  list-style: none;
+  padding: 0;
+  margin: 16px 0;
+}
+.visit-history li {
+  display: grid;
+  grid-template-columns: 60px minmax(0, 1fr) minmax(40px, auto);
+  align-items: center;
+  gap: 12px;
+  margin: 12px 0;
+  font-size: 0.8rem;
+}
+.visit-history strong {
+  text-align: right;
+}
+.visit-track {
+  height: 12px;
+  border-radius: 6px;
+  background: #edf3e6;
+  overflow: hidden;
+}
+.visit-track > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #4b6c3e;
+}
+.visit-engagement {
+  font-size: 0.8rem;
+  line-height: 1.8;
+}
 .filter-tabs {
   display: flex;
   gap: 22px;

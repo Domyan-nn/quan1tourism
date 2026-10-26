@@ -147,3 +147,14 @@ export interface Summary {
   tts_ready: number;
   translations_ready: number;
 }
+
+export interface SiteStatistics {
+  total_visits: number;
+  today_visits: number;
+  last_7_days_visits: number;
+  last_30_days_visits: number;
+  total_views: number;
+  total_listens: number;
+  timezone: string;
+  daily: { date: string; visits: number }[];
+}

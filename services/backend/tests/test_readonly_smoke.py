@@ -1,5 +1,6 @@
 from conftest import login
 from test_maps_statistics import counters, published
+from app.release import SCHEMA_REVISION
 
 
 def test_smoke_can_read_public_details_without_recording_visits(env, monkeypatch):
@@ -14,7 +15,7 @@ def test_smoke_can_read_public_details_without_recording_visits(env, monkeypatch
     assert client.get("/api/v1/health/ready").status_code == 200
     monkeypatch.setenv("RELEASE_SHA", "a" * 40)
     assert client.get("/api/v1/version").json() == {
-        "release": "a" * 40, "worker_protocol": 3, "schema_revision": "0010",
+        "release": "a" * 40, "worker_protocol": 3, "schema_revision": SCHEMA_REVISION,
     }
     assert client.get("/api/v1/admin/pois").status_code == 401
     login(client, "admin")

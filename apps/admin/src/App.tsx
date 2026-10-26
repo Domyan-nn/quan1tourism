@@ -44,6 +44,7 @@ import { Badge, Brand, Cover, Dialog, Empty, Loading } from "./components";
 import { messages, type UiLocale } from "./i18n";
 import { Editor } from "./Editor";
 import { LanguageManager } from "./Languages";
+import { Statistics } from "./Statistics";
 import { editorId, useAdminRoute } from "./useAdminRoute";
 
 type View = "overview" | "places" | "categories" | "languages" | "review";
@@ -767,6 +768,9 @@ export function App() {
                     {t.retry}
                   </button>
                 </div>
+              )}
+              {view === "overview" && user.role === "admin" && (
+                <Statistics locale={locale} />
               )}
               {view === "overview" && (
                 <div className="overview-layout">
