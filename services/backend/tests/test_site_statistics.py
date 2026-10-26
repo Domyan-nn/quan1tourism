@@ -7,12 +7,13 @@ from sqlalchemy import func, select
 from app.auth import digest
 from app.engagement import ENGAGEMENT_COOKIE
 from app.main import app
-from app.models import SiteVisitDaily, SiteVisitSession
+from app.models import SitePresenceSession, SiteVisitDaily, SiteVisitSession
 from conftest import HEADERS, login
 from test_maps_statistics import published
 
 VISIT = "/api/v1/events/visit"
 STATS = "/api/v1/admin/statistics"
+PRESENCE = "/api/v1/events/presence"
 
 
 def visits(factory):
@@ -31,7 +32,7 @@ def test_statistics_require_admin_and_start_with_real_zeroes(env):
     assert response.headers["cache-control"] == "no-store"
     data = response.json()
     for field in ("total_visits", "today_visits", "last_7_days_visits", "last_30_days_visits",
-                  "total_views", "total_listens"):
+                  "total_views", "total_listens", "active_visitors"):
         assert data[field] == 0
     assert data["timezone"] == "Asia/Ho_Chi_Minh"
     assert len(data["daily"]) == 30
@@ -67,6 +68,88 @@ def test_visit_cookie_rolling_window_and_persistence(env, monkeypatch):
     with factory() as db:
         assert db.scalar(select(func.count()).select_from(SiteVisitSession)) == 1
         assert db.get(SiteVisitSession, digest(token)) is not None
+
+
+def test_presence_is_session_deduplicated_expires_and_does_not_inflate_visits(env, monkeypatch):
+    client, factory, _ = env
+    stamp = datetime(2026, 10, 26, 3, tzinfo=timezone.utc)
+    monkeypatch.setattr("app.statistics.now", lambda: stamp)
+    first = client.post(PRESENCE)
+    assert first.status_code == 204
+    assert first.headers["cache-control"] == "no-store"
+    assert "HttpOnly" in first.headers["set-cookie"]
+    token = client.cookies.get(ENGAGEMENT_COOKIE)
+    with TestClient(app, headers=HEADERS, cookies={ENGAGEMENT_COOKIE: token}) as tab:
+        for _ in range(3):
+            assert tab.post(PRESENCE).status_code == 204
+    assert visits(factory) == 0
+    with factory() as db:
+        assert db.scalar(select(func.count()).select_from(SitePresenceSession)) == 1
+        assert db.scalar(select(func.count()).select_from(SiteVisitSession)) == 0
+    login(client, "admin")
+    assert client.get(STATS).json()["active_visitors"] == 1
+    stamp += timedelta(seconds=89)
+    assert client.get(STATS).json()["active_visitors"] == 1
+    stamp += timedelta(seconds=1)
+    assert client.get(STATS).json()["active_visitors"] == 0
+    with TestClient(app, headers=HEADERS, cookies={ENGAGEMENT_COOKIE: token}) as tab:
+        assert tab.post(PRESENCE).status_code == 204
+    assert client.get(STATS).json()["active_visitors"] == 1
+    assert client.get(STATS).json()["active_window_seconds"] == 90
+    assert visits(factory) == 0
+
+
+def test_presence_excludes_staff_and_bounds_storage_without_counting_future_dates(env, monkeypatch):
+    client, factory, _ = env
+    stamp = datetime(2026, 10, 26, 3, tzinfo=timezone.utc)
+    monkeypatch.setattr("app.statistics.now", lambda: stamp)
+    with factory() as db:
+        db.add_all([
+            SitePresenceSession(session_hash="old", last_seen_at=stamp - timedelta(days=2)),
+            SitePresenceSession(session_hash="expired", last_seen_at=stamp - timedelta(seconds=90)),
+            SitePresenceSession(session_hash="future", last_seen_at=stamp + timedelta(seconds=1)),
+        ])
+        db.commit()
+    assert client.post(PRESENCE).status_code == 204
+    for role in ("admin", "editor", "reviewer"):
+        login(client, role)
+        assert client.post(PRESENCE).status_code == 204
+    login(client, "admin")
+    assert client.get(STATS).json()["active_visitors"] == 0
+    with factory() as db:
+        assert db.get(SitePresenceSession, "old") is None
+        assert db.get(SitePresenceSession, "expired") is not None
+    client.post("/api/v1/auth/logout")
+    assert client.post(PRESENCE, headers={"X-Requested-With": ""}).status_code == 403
+    client.post("/api/v1/auth/register", json={
+        "name": "Visitor", "email": "presence@test.local", "password": "test-password",
+    })
+    assert client.post(PRESENCE).status_code == 204
+    login(client, "admin")
+    assert client.get(STATS).json()["active_visitors"] == 1
+
+
+def test_concurrent_presence_and_delayed_heartbeat_keep_latest_activity(env, monkeypatch):
+    client, factory, _ = env
+    stamp = datetime(2026, 10, 26, 3, tzinfo=timezone.utc)
+    monkeypatch.setattr("app.statistics.now", lambda: stamp)
+
+    def heartbeat(token):
+        with TestClient(app, headers=HEADERS, cookies={ENGAGEMENT_COOKIE: token}) as visitor:
+            return visitor.post(PRESENCE).status_code
+
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        assert list(pool.map(heartbeat, ["a" * 64] * 12)) == [204] * 12
+        assert list(pool.map(heartbeat, [f"{index:064x}" for index in range(4)])) == [204] * 4
+    login(client, "admin")
+    assert client.get(STATS).json()["active_visitors"] == 5
+    stamp -= timedelta(seconds=30)
+    assert heartbeat("a" * 64) == 204
+    stamp += timedelta(seconds=119)
+    assert client.get(STATS).json()["active_visitors"] == 5
+    stamp += timedelta(seconds=1)
+    assert client.get(STATS).json()["active_visitors"] == 0
+    assert visits(factory) == 0
 
 
 def test_site_visits_are_independent_of_poi_views_and_staff_preview(env):

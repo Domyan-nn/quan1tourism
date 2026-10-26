@@ -60,7 +60,9 @@ async def request_context(request: Request, call_next):
     ):
         return JSONResponse({"detail": "Yêu cầu không hợp lệ.", "request_id": request_id}, status_code=403)
     response = await call_next(request)
-    if request.url.path.startswith("/api/v1/pois") or request.url.path == "/api/v1/events/visit":
+    if request.url.path.startswith("/api/v1/pois") or request.url.path in {
+        "/api/v1/events/visit", "/api/v1/events/presence",
+    }:
         response.headers["Cache-Control"] = "no-store"
         if new_visit:
             response.set_cookie(ENGAGEMENT_COOKIE, request.state.visit_session, httponly=True,

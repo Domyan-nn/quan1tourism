@@ -29,6 +29,7 @@ import { MobileAppCard } from "./MobileAppCard";
 import { expoGoUrl } from "./expo-link";
 import { useVisitorNavigation } from "./navigation";
 import { normalizeSearch } from "./search";
+import { useSitePresence } from "./useSitePresence";
 import "@fontsource/be-vietnam-pro/400.css";
 import "@fontsource/be-vietnam-pro/500.css";
 import "@fontsource/be-vietnam-pro/600.css";
@@ -50,6 +51,8 @@ function Visitor() {
   const [languageError, setLanguageError] = useState("");
   const [pois, setPois] = useState<Poi[]>([]);
   const [loading, setLoading] = useState(true);
+  const [presenceReady, setPresenceReady] = useState(false);
+  useSitePresence(presenceReady);
   const [error, setError] = useState("");
   const navigation = useVisitorNavigation(loading);
   const { query, view, setQuery, setView } = navigation;
@@ -107,6 +110,7 @@ function Visitor() {
       .then((data) => {
         if (!ignore) {
           setPois(data.items);
+          setPresenceReady(true);
           // The list response establishes the anonymous cookie before recording.
           recordVisit();
         }

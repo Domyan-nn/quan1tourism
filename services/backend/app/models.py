@@ -146,6 +146,12 @@ class SiteVisitSession(Base):
     recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
+class SitePresenceSession(Base):
+    __tablename__ = "site_presence_sessions"
+    session_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
 class SiteVisitDaily(Base):
     __tablename__ = "site_visit_daily"
     day: Mapped[date] = mapped_column(Date, primary_key=True)

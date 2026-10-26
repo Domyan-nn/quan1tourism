@@ -1,5 +1,11 @@
 import { useEffect, useState } from "react";
-import { Activity, CalendarDays, Globe2, RefreshCw } from "lucide-react";
+import {
+  Activity,
+  CalendarDays,
+  Globe2,
+  RefreshCw,
+  UsersRound,
+} from "lucide-react";
 import { api, uiMessage } from "@quan1/api-client";
 import type { SiteStatistics } from "@quan1/contracts";
 import { Loading } from "./components";
@@ -22,17 +28,35 @@ export function Statistics({ locale }: { locale: UiLocale }) {
     const controller = new AbortController();
     setLoading(true);
     setError("");
-    api<SiteStatistics>("/admin/statistics", { signal: controller.signal })
-      .then((stats) => {
-        if (!controller.signal.aborted) setData(stats);
+    let pending = false;
+    const load = () => {
+      if (pending || document.visibilityState !== "visible") return;
+      pending = true;
+      void api<SiteStatistics>("/admin/statistics", {
+        signal: controller.signal,
       })
-      .catch((issue) => {
-        if (!controller.signal.aborted) setError(issue.message);
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
-      });
-    return () => controller.abort();
+        .then((stats) => {
+          if (!controller.signal.aborted) {
+            setData(stats);
+            setError("");
+          }
+        })
+        .catch((issue) => {
+          if (!controller.signal.aborted) setError(issue.message);
+        })
+        .finally(() => {
+          pending = false;
+          if (!controller.signal.aborted) setLoading(false);
+        });
+    };
+    load();
+    const interval = window.setInterval(load, 15_000);
+    document.addEventListener("visibilitychange", load);
+    return () => {
+      controller.abort();
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", load);
+    };
   }, [refresh]);
 
   const days = data?.daily.slice(-7) ?? [];
@@ -71,6 +95,18 @@ export function Statistics({ locale }: { locale: UiLocale }) {
       ) : (
         data && (
           <>
+            <div className="active-visitors">
+              <div className="active-visitors-label">
+                <UsersRound size={22} aria-hidden="true" />
+                <span>{vi ? "Đang truy cập" : "Visitors online"}</span>
+                <strong>{number.format(data.active_visitors)}</strong>
+              </div>
+              <p>
+                {vi
+                  ? `Phiên du khách hoạt động trong ${data.active_window_seconds} giây gần nhất · Tự cập nhật mỗi 15 giây`
+                  : `Visitor sessions active in the last ${data.active_window_seconds} seconds · Updates every 15 seconds`}
+              </p>
+            </div>
             <div className="stats">
               {[
                 {

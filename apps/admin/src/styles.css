@@ -625,6 +625,35 @@ h1 {
   box-shadow: 0 2px 3px #31452b02;
   overflow: hidden;
 }
+.active-visitors {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 24px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+  border: 1px solid #c4dccb;
+  border-radius: 12px;
+  background: #f1f8f2;
+  color: #245737;
+}
+.active-visitors-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+}
+.active-visitors-label strong {
+  font-size: 28px;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+.active-visitors p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.7;
+}
 .site-statistics {
   padding: 20px;
   margin-bottom: 27px;

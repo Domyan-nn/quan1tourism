@@ -13,3 +13,11 @@ API `GET /api/v1/admin/statistics` trả các tổng và chuỗi 30 ngày, bổ 
 Migration mới **0011**, tương thích SQLite/PostgreSQL; hai bảng mới bật RLS trên PostgreSQL. Trước khi khởi động backend mới, thực hiện quy trình backup/migration theo [deployment runbook](DEPLOYMENT-RUNBOOK.md). Với DB local, tại `services/backend` chạy `uv run alembic upgrade head`. Metadata schema của backend và gói frontend được cập nhật cùng revision.
 
 Push Git không tự chạy migration DB production; áp dụng migration qua quy trình phát hành hiện có.
+
+## Số lượng đang truy cập
+
+Thẻ **Đang truy cập** đếm các phiên du khách gửi tín hiệu hoạt động trong **90 giây gần nhất**. Trang du khách gửi tín hiệu mỗi 30 giây khi tab đang hiển thị và có mạng; gửi lại ngay khi quay về tab hoặc kết nối lại. Các tab cùng cookie được gộp thành một phiên. Admin/editor/reviewer đã đăng nhập được loại trừ. Đóng trang hoặc chuyển sang nền sẽ hết được tính sau tối đa khoảng 90 giây, cộng thời gian làm mới admin.
+
+Admin tự tải lại số liệu mỗi **15 giây** khi tab đang hiển thị, và tải ngay khi quay về tab. Nút **Làm mới** vẫn có thể dùng. Đây là số phiên hoạt động gần đây, không phải số người duy nhất hay số kết nối tức thời.
+
+API `POST /api/v1/events/presence` chỉ cập nhật `site_presence_sessions(session_hash, last_seen_at)`; không tăng lượt truy cập, lượt xem hoặc lượt nghe. Bản ghi quá một ngày được dọn khi có tín hiệu mới. `GET /api/v1/admin/statistics` bổ sung `active_visitors` và `active_window_seconds`. Migration **0012** chỉ thêm bảng và index, bật RLS trên PostgreSQL. Cần backup và áp dụng migration trước khi hoàn tất triển khai backend mới; không cần thao tác database từ trình duyệt admin.

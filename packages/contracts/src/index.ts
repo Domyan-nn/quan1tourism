@@ -149,6 +149,8 @@ export interface Summary {
 }
 
 export interface SiteStatistics {
+  active_visitors: number;
+  active_window_seconds: number;
   total_visits: number;
   today_visits: number;
   last_7_days_visits: number;

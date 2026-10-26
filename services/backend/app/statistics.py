@@ -3,17 +3,38 @@
 from datetime import timedelta, timezone
 
 from fastapi import APIRouter, Depends, Request
-from sqlalchemy import case, func, select
+from sqlalchemy import case, delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session as DbSession
 
 from .auth import digest, optional_user, require
 from .db import get_db
-from .models import Poi, SiteVisitDaily, SiteVisitSession, User, now
+from .models import Poi, SitePresenceSession, SiteVisitDaily, SiteVisitSession, User, now
 
 router = APIRouter(prefix="/api/v1", tags=["statistics"])
 SITE_TIMEZONE = timezone(timedelta(hours=7))
+PRESENCE_WINDOW_SECONDS = 90
+
+
+@router.post("/events/presence", status_code=204)
+def record_presence(request: Request, db: DbSession = Depends(get_db)):
+    session_hash = digest(request.state.visit_session)
+    user = optional_user(request, db)
+    if user and user.role != "visitor":
+        db.execute(delete(SitePresenceSession).where(SitePresenceSession.session_hash == session_hash))
+        db.commit()
+        return
+    seen_at = now()
+    insert = sqlite_insert if db.bind.dialect.name == "sqlite" else pg_insert
+    heartbeat = insert(SitePresenceSession).values(session_hash=session_hash, last_seen_at=seen_at)
+    db.execute(heartbeat.on_conflict_do_update(
+        index_elements=["session_hash"], set_={"last_seen_at": seen_at},
+        where=SitePresenceSession.last_seen_at < seen_at,
+    ))
+    # Indexed expiry bounds storage; heartbeats never modify visit/view/listen totals.
+    db.execute(delete(SitePresenceSession).where(SitePresenceSession.last_seen_at < seen_at - timedelta(days=1)))
+    db.commit()
 
 
 @router.post("/events/visit", status_code=204)
@@ -42,7 +63,12 @@ def record_visit(request: Request, db: DbSession = Depends(get_db)):
 
 @router.get("/admin/statistics")
 def statistics(db: DbSession = Depends(get_db), user: User = Depends(require("admin"))):
-    today = now().astimezone(SITE_TIMEZONE).date()
+    measured_at = now()
+    today = measured_at.astimezone(SITE_TIMEZONE).date()
+    active_visitors = db.scalar(select(func.count()).select_from(SitePresenceSession).where(
+        SitePresenceSession.last_seen_at > measured_at - timedelta(seconds=PRESENCE_WINDOW_SECONDS),
+        SitePresenceSession.last_seen_at <= measured_at,
+    ))
     week_start = today - timedelta(days=6)
     month_start = today - timedelta(days=29)
     total, daily, weekly, monthly = db.execute(select(
@@ -58,6 +84,8 @@ def statistics(db: DbSession = Depends(get_db), user: User = Depends(require("ad
         func.coalesce(func.sum(Poi.view_count), 0), func.coalesce(func.sum(Poi.listen_count), 0),
     )).one()
     return {
+        "active_visitors": active_visitors,
+        "active_window_seconds": PRESENCE_WINDOW_SECONDS,
         "total_visits": total,
         "today_visits": daily,
         "last_7_days_visits": weekly,

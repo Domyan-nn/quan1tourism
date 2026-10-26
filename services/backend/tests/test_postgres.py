@@ -19,7 +19,7 @@ def require_postgres(request):
         pytest.skip("Explicit --postgres required")
 
 
-@pytest.mark.parametrize("start", ["base", "0007", "0008", "0009", "0010"])
+@pytest.mark.parametrize("start", ["base", "0007", "0008", "0009", "0010", "0011"])
 def test_empty_and_previous_revision_preserve_all_data(postgres_engine, monkeypatch, start):
     engine = postgres_engine
     monkeypatch.setattr("app.db.engine", engine)
@@ -56,7 +56,7 @@ def test_empty_and_previous_revision_preserve_all_data(postgres_engine, monkeypa
             for table, values in rows.items():
                 connection.execute(old.tables[table].insert().values(**values))
             connection.execute(old.tables["pois"].update().values(image_id="image"))
-            if start in {"0008", "0009", "0010"}:
+            if start in {"0008", "0009", "0010", "0011"}:
                 connection.execute(old.tables["pois"].update().values(view_count=17, listen_count=9))
                 connection.execute(old.tables["poi_engagements"].insert().values(
                     session_hash="synthetic", poi_id="poi", kind="listen", recorded_at=stamp))
@@ -73,13 +73,14 @@ def test_empty_and_previous_revision_preserve_all_data(postgres_engine, monkeypa
         for name, records in before.items():
             assert connection.execute(old.tables[name].select()).mappings().all() == records
         if start != "base":
-            assert connection.exec_driver_sql("SELECT view_count, listen_count FROM pois").one() == ((17, 9) if start in {"0008", "0009", "0010"} else (0, 0))
+            assert connection.exec_driver_sql("SELECT view_count, listen_count FROM pois").one() == ((17, 9) if start in {"0008", "0009", "0010", "0011"} else (0, 0))
             assert connection.exec_driver_sql("SELECT trigger_radius_m, auto_narration_enabled, narration_meta FROM pois").one() == (100, False, {})
         assert connection.exec_driver_sql(
             "SELECT count(*) FROM pg_class WHERE relnamespace = current_schema()::regnamespace "
-            "AND relname IN ('pois','ai_jobs','sessions','poi_engagements','site_visit_sessions','site_visit_daily') "
+            "AND relname IN ('pois','ai_jobs','sessions','poi_engagements','site_visit_sessions',"
+            "'site_visit_daily','site_presence_sessions') "
             "AND relrowsecurity"
-        ).scalar() == 6
+        ).scalar() == 7
     assert "display_order" not in {c["name"] for c in inspect(engine).get_columns("pois")}
 
 
